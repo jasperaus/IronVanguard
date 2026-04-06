@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}
+    // Fields: uid, displayName, email, role, wins, losses
+    //
+    // Collection: /games/{gameId}
+    // Fields: players, turn, activePlayerId, status, winnerId, lastAction, updatedAt
+    //
+    // Collection: /games/{gameId}/mechs/{mechId}
+    // Fields: type, ownerId, q, r, hp, maxHp, armor, maxArmor, heat, isDestroyed, hasMoved, hasAttacked
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+         (request.auth.token.email == "jason.perelson@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function getGame(gameId) {
+      return get(/databases/$(database)/documents/games/$(gameId)).data;
+    }
+
+    function isPlayerInGame(gameId) {
+      return isAuthenticated() && request.auth.uid in getGame(gameId).players;
+    }
+
+    function isActivePlayer(gameId) {
+      return isAuthenticated() && request.auth.uid == getGame(gameId).activePlayerId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role']) &&
+             data.uid is string && data.displayName is string &&
+             data.role in ['admin', 'player'];
+    }
+
+    function isValidGame(data) {
+      return data.keys().hasAll(['players', 'turn', 'activePlayerId', 'status']) &&
+             data.players is list && data.turn is number &&
+             data.activePlayerId is string && data.status in ['waiting', 'playing', 'finished'];
+    }
+
+    function isValidMech(data) {
+      return data.keys().hasAll(['type', 'ownerId', 'stats', 'position']) &&
+             data.type in ['light', 'medium', 'heavy'] &&
+             data.ownerId is string &&
+             data.position.keys().hasAll(['q', 'r']) &&
+             data.position.q is number && data.position.r is number &&
+             data.stats.keys().hasAll(['hp', 'armor', 'maxHp', 'maxArmor']) &&
+             data.stats.hp is number && data.stats.armor is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'player';
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+    }
+
+    match /games/{gameId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidGame(request.resource.data) && request.auth.uid in request.resource.data.players;
+      allow update: if isAuthenticated() && (isPlayerInGame(gameId) || isAdmin()) && isValidGame(request.resource.data);
+
+      match /mechs/{mechId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidMech(request.resource.data);
+        allow update: if isAuthenticated() && (isPlayerInGame(gameId) || isAdmin()) && isValidMech(request.resource.data);
+      }
+    }
+  }
+}
