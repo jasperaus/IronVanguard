@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { GameState, MechInstance } from '../game/types';
 
@@ -11,6 +11,8 @@ interface HUDProps {
 }
 
 export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, isMyTurn, assets }) => {
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-10">
       {/* CRT Overlay for HUD elements */}
@@ -45,17 +47,32 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
         </div>
         
         <div className="flex gap-4">
-          <button 
-            onClick={() => {
-              if (window.confirm("Are you sure you want to reset the simulation? This will clear the current battlefield.")) {
-                // We dispatch a custom event that App.tsx will listen for
-                window.dispatchEvent(new CustomEvent('reset-game'));
-              }
-            }}
-            className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/30 text-xs"
-          >
-            Reset Sim
-          </button>
+          {isConfirmingReset ? (
+            <div className="flex gap-2">
+              <button 
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('reset-game'));
+                  setIsConfirmingReset(false);
+                }}
+                className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-600 hover:bg-red-500 text-black border border-red-500/30 text-xs"
+              >
+                Confirm Reset
+              </button>
+              <button 
+                onClick={() => setIsConfirmingReset(false)}
+                className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-500/30 text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setIsConfirmingReset(true)}
+              className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/30 text-xs"
+            >
+              Reset Sim
+            </button>
+          )}
           <button 
             onClick={onEndTurn}
             disabled={!isMyTurn}

@@ -32,6 +32,7 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [currentAssetLoading, setCurrentAssetLoading] = useState('');
+  const [generationError, setGenerationError] = useState<string | null>(null);
   
   const pixiAppRef = useRef<PixiAppRef>(null);
 
@@ -70,13 +71,22 @@ export default function App() {
     const start = async () => {
       // Generate assets in background
       try {
+        setGenerationError(null);
         const generatedAssets = await generateAllAssets((progress, asset) => {
           setLoadingProgress(progress);
           setCurrentAssetLoading(asset);
         });
+        
+        // Check if any assets failed to generate (meaning they fell back to procedural)
+        const missingAssets = Object.values(generatedAssets).filter(val => !val);
+        if (missingAssets.length > 0) {
+          setGenerationError("Some high-fidelity assets failed to generate (likely due to API quota limits). Using procedural fallback graphics.");
+        }
+        
         setAssets(generatedAssets);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to generate assets", err);
+        setGenerationError(err.message || "Failed to generate assets.");
       }
     };
     start();
@@ -433,7 +443,7 @@ export default function App() {
   }
 
   if (isLoading) {
-    return <PreGameLobby progress={loadingProgress} currentAsset={currentAssetLoading} onReady={handleReady} />;
+    return <PreGameLobby progress={loadingProgress} currentAsset={currentAssetLoading} onReady={handleReady} error={generationError} />;
   }
 
   return (

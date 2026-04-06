@@ -5,19 +5,20 @@ interface PreGameLobbyProps {
   progress: number;
   currentAsset: string;
   onReady: () => void;
+  error?: string | null;
 }
 
-export const PreGameLobby: React.FC<PreGameLobbyProps> = ({ progress, currentAsset, onReady }) => {
+export const PreGameLobby: React.FC<PreGameLobbyProps> = ({ progress, currentAsset, onReady, error }) => {
   const isLoaded = progress >= 1;
 
   useEffect(() => {
-    if (isLoaded) {
+    if (isLoaded && !error) {
       const timer = setTimeout(() => {
         onReady();
       }, 1000); // 1 second delay to show 100% before deploying
       return () => clearTimeout(timer);
     }
-  }, [isLoaded, onReady]);
+  }, [isLoaded, onReady, error]);
 
   return (
     <div className="w-full h-screen bg-black flex items-center justify-center font-mono text-emerald-500 relative overflow-hidden">
@@ -43,8 +44,23 @@ export const PreGameLobby: React.FC<PreGameLobbyProps> = ({ progress, currentAss
           </div>
 
           <div className="text-xs uppercase tracking-widest text-emerald-500/50 h-4">
-            {isLoaded ? '> All systems go. Deploying...' : (currentAsset ? `> Loading asset: ${currentAsset}...` : '> Establishing orbital link...')}
+            {isLoaded ? '> All systems go.' : (currentAsset ? `> Loading asset: ${currentAsset}...` : '> Establishing orbital link...')}
           </div>
+          
+          {error && (
+            <div className="text-xs text-amber-500 bg-amber-900/20 border border-amber-500/30 p-3 rounded-sm mt-4">
+              WARNING: {error}
+            </div>
+          )}
+
+          {isLoaded && error && (
+            <button 
+              onClick={onReady}
+              className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded-sm transition-all uppercase tracking-widest mt-4"
+            >
+              Deploy with Fallback Systems
+            </button>
+          )}
         </div>
 
         <div className="mt-12">
