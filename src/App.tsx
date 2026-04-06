@@ -257,9 +257,16 @@ export default function App() {
       updateState();
     }, (err) => handleFirestoreError(err, OperationType.GET, `games/${gameId}/mechs`));
 
+    const handleReset = () => {
+      initializeGame(gameId, [user.uid, 'ai_1']);
+      setSelectedMech(undefined);
+    };
+    window.addEventListener('reset-game', handleReset);
+
     return () => {
       unsubGame();
       unsubMechs();
+      window.removeEventListener('reset-game', handleReset);
     };
   }, [user, isAuthReady]);
 

@@ -44,17 +44,30 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
           </div>
         </div>
         
-        <button 
-          onClick={onEndTurn}
-          disabled={!isMyTurn}
-          className={`font-mono font-bold px-6 py-2 rounded-sm transition-colors uppercase tracking-widest ${
-            isMyTurn 
-              ? 'bg-emerald-600 hover:bg-emerald-500 text-black' 
-              : 'bg-emerald-900/50 text-emerald-500/50 cursor-not-allowed'
-          }`}
-        >
-          End Turn
-        </button>
+        <div className="flex gap-4">
+          <button 
+            onClick={() => {
+              if (window.confirm("Are you sure you want to reset the simulation? This will clear the current battlefield.")) {
+                // We dispatch a custom event that App.tsx will listen for
+                window.dispatchEvent(new CustomEvent('reset-game'));
+              }
+            }}
+            className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/30 text-xs"
+          >
+            Reset Sim
+          </button>
+          <button 
+            onClick={onEndTurn}
+            disabled={!isMyTurn}
+            className={`font-mono font-bold px-6 py-2 rounded-sm transition-colors uppercase tracking-widest ${
+              isMyTurn 
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-black' 
+                : 'bg-emerald-900/50 text-emerald-500/50 cursor-not-allowed'
+            }`}
+          >
+            End Turn
+          </button>
+        </div>
       </div>
 
       {/* Bottom Bar: Selected Mech Info */}

@@ -23,16 +23,20 @@ interface PixiAppProps {
 const HEX_SIZE = 45;
 const ISO_SQUASH = 0.707; // Factor to squash Y axis for isometric look (45 degrees)
 
-// Custom shader to remove black background from generated mechs
-const blackRemovalShader = `
+// Custom shader to remove green background from generated mechs
+const greenRemovalShader = `
 varying vec2 vTextureCoord;
 uniform sampler2D uSampler;
 void main(void) {
     vec4 color = texture2D(uSampler, vTextureCoord);
-    // Find the brightest color channel
-    float maxColor = max(color.r, max(color.g, color.b));
-    // Smoothly transition alpha based on brightness (thresholding black)
-    float alpha = smoothstep(0.02, 0.15, maxColor);
+    
+    // Calculate how "green" the pixel is compared to red and blue
+    // Pure green is (0, 1, 0). We want to key out bright greens.
+    float greenness = color.g - max(color.r, color.b);
+    
+    // If greenness is high, it's the background. Smoothstep creates a soft edge.
+    float alpha = 1.0 - smoothstep(0.1, 0.3, greenness);
+    
     // Premultiply alpha for WebGL
     gl_FragColor = vec4(color.rgb * alpha, color.a * alpha);
 }
@@ -67,7 +71,7 @@ void main(void)
 }
 `;
 
-const transparencyFilter = PIXI.Filter.from({ gl: { vertex: defaultFilterVertex, fragment: blackRemovalShader } });
+const transparencyFilter = PIXI.Filter.from({ gl: { vertex: defaultFilterVertex, fragment: greenRemovalShader } });
 transparencyFilter.padding = 100; // Prevent clipping on the edges of the mech sprite
 
 export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets, onHexClick, selectedMech, user }, ref) => {
