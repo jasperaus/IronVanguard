@@ -1,6 +1,6 @@
 export async function generateAllAssets(onProgress?: (progress: number, currentAsset: string) => void) {
   // Base URL for raw files in the GitHub repository
-  const GITHUB_BASE_URL = "https://raw.githubusercontent.com/jasperaus/IronVanguard/main/assets";
+  const BASE_URL = import.meta.env.VITE_ASSETS_BASE_URL || "https://raw.githubusercontent.com/jasperaus/IronVanguard/main/assets";
   
   const assets = [
     "mech_light",
@@ -16,6 +16,8 @@ export async function generateAllAssets(onProgress?: (progress: number, currentA
   const checkImage = (url: string): Promise<boolean> => {
     return new Promise((resolve) => {
       const img = new Image();
+      // Add crossOrigin to prevent canvas tainting issues if we ever need to read pixel data
+      img.crossOrigin = "anonymous";
       img.onload = () => resolve(true);
       img.onerror = () => resolve(false);
       img.src = url;
@@ -27,7 +29,7 @@ export async function generateAllAssets(onProgress?: (progress: number, currentA
       onProgress(completed / assets.length, name);
     }
     
-    const url = `${GITHUB_BASE_URL}/${name}.png`;
+    const url = `${BASE_URL}/${name}.png`;
     const exists = await checkImage(url);
     
     if (exists) {

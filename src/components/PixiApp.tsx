@@ -222,8 +222,9 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       // Load textures
       for (const [name, data] of Object.entries(assets)) {
+        if (!data) continue; // Skip if no data (procedural fallback)
         try {
-          const texture = await PIXI.Assets.load(`data:image/png;base64,${data}`);
+          const texture = await PIXI.Assets.load(data);
           if (isMounted) {
             texturesRef.current[name] = texture;
           }
