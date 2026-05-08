@@ -271,14 +271,14 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       // Add Environmental Lighting
       const ambientLight = new PIXI.Graphics();
-      ambientLight.beginFill(0x0a1a2a, 0.4); // Atmospheric blue tint
+      ambientLight.beginFill(0x051020, 0.6); // Deep, moody holographic blue
       ambientLight.drawRect(-1500, -1500, 3000, 3000);
       ambientLight.endFill();
       ambientLight.blendMode = 'multiply';
       lightingLayer.addChild(ambientLight);
 
       const sunLight = new PIXI.Graphics();
-      sunLight.beginFill(0xffaa55, 0.15); // Warm sunlight
+      sunLight.beginFill(0x44aaff, 0.2); // Cool cyan spotlight from above
       sunLight.drawCircle(500, -500, 1200);
       sunLight.endFill();
       sunLight.blendMode = 'add';
@@ -290,6 +290,27 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       // Apply isometric projection to the world
       worldContainer.scale.y = ISO_SQUASH;
+
+      // Add scanlines for the "holotable" aesthetic
+      const scanlines = new PIXI.Graphics();
+      scanlines.beginFill(0x00ffff, 0.03); // Very faint cyan
+      for (let i = 0; i < app.screen.height; i += 4) {
+          scanlines.drawRect(0, i, app.screen.width, 1);
+      }
+      scanlines.endFill();
+
+      // We don't want scanlines scaling with the world, so we attach them directly to the stage
+      // but behind the UI if there was any on the stage.
+      app.stage.addChildAt(scanlines, 1); // Place above worldContainer (index 0)
+
+      // Add a subtle vignette (dark edges) using standard graphics primitives instead of holes
+      const vignette = new PIXI.Graphics();
+      for (let i = 1; i <= 5; i++) {
+        vignette.lineStyle(100, 0x000000, 0.15);
+        // Draw ellipses that get smaller, acting as thick borders
+        vignette.drawEllipse(app.screen.width / 2, app.screen.height / 2, (app.screen.width / 2) + (5 - i)*50, (app.screen.height / 2) + (5 - i)*50);
+      }
+      app.stage.addChild(vignette);
 
       // Camera Controls
       app.stage.eventMode = 'static';
@@ -401,19 +422,19 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         const dist = (Math.abs(q) + Math.abs(q + r) + Math.abs(r)) / 2;
         if (dist > 8) continue;
 
-        let fillColor = 0x000000;
-        let lineAlpha = 0.08; // More subtle lines
-        let lineColor = 0x88aa99; // Slightly brighter, but lower alpha
+        let fillColor = 0x001122; // Very dark blue base
+        let lineAlpha = 0.2; // Brighter holographic lines
+        let lineColor = 0x1188aa; // Cyan/blue holographic grid lines
         let fillAlpha = 0;
 
         // Highlight logic
         if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasMoved) {
           const distToSelected = hexDistance(selectedMech.position, { q, r });
           if (distToSelected <= selectedMech.stats.movement) {
-            fillColor = 0x22aa55; // Move range
-            fillAlpha = 0.15;
-            lineColor = 0x44ff88;
-            lineAlpha = 0.4;
+            fillColor = 0x1155aa; // Move range - holographic blue
+            fillAlpha = 0.2;
+            lineColor = 0x44aaff;
+            lineAlpha = 0.6;
           }
         }
         if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasAttacked) {
@@ -560,25 +581,54 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         const shadowContainer = new PIXI.Container();
         shadowContainer.name = 'shadowContainer';
         
-        // Ambient soft shadow
+        // Ambient soft shadow - adjusted for holotable glow
         const ambientShadow = new PIXI.Graphics();
-        ambientShadow.beginFill(0x000000, 0.5);
+        ambientShadow.beginFill(0x000000, 0.6);
         ambientShadow.drawEllipse(0, 0, HEX_SIZE * 1.2, HEX_SIZE * 1.2 * ISO_SQUASH);
         ambientShadow.endFill();
         const ambientBlur = new PIXI.BlurFilter();
-        ambientBlur.blur = 12;
+        ambientBlur.blur = 15;
         ambientShadow.filters = [ambientBlur];
         shadowContainer.addChild(ambientShadow);
 
         // Core dark shadow directly under feet
         const coreShadow = new PIXI.Graphics();
-        coreShadow.beginFill(0x000000, 0.8);
+        coreShadow.beginFill(0x000000, 0.9);
         coreShadow.drawEllipse(0, 0, HEX_SIZE * 0.6, HEX_SIZE * 0.6 * ISO_SQUASH);
         coreShadow.endFill();
         const coreBlur = new PIXI.BlurFilter();
-        coreBlur.blur = 4;
+        coreBlur.blur = 6;
         coreShadow.filters = [coreBlur];
         shadowContainer.addChild(coreShadow);
+
+        // Holographic base ring under the mech
+        const holoRingContainer = new PIXI.Container();
+        holoRingContainer.name = 'holoRingContainer';
+
+        const holoRing = new PIXI.Graphics();
+        // Draw a perfect circle, the container will be squashed
+        holoRing.lineStyle(2, mech.ownerId === user?.uid ? 0x00ffaa : 0xff3333, 0.4);
+        holoRing.drawCircle(0, 0, HEX_SIZE * 0.8);
+
+        // Add dashed segments to the ring for a more high-tech look
+        for(let i=0; i<4; i++) {
+           const arc = new PIXI.Graphics();
+           arc.lineStyle(3, mech.ownerId === user?.uid ? 0x00ffaa : 0xff3333, 0.8);
+           arc.arc(0, 0, HEX_SIZE * 0.8, i * Math.PI/2, i * Math.PI/2 + Math.PI/4);
+           holoRing.addChild(arc);
+        }
+
+        holoRingContainer.addChild(holoRing);
+        holoRingContainer.scale.y = ISO_SQUASH;
+
+        // Add a subtle spinning animation to the circular graphic (inside the squashed container)
+        gsap.to(holoRing, {
+          rotation: Math.PI * 2,
+          duration: 8 + Math.random() * 4,
+          repeat: -1,
+          ease: "none"
+        });
+        shadowContainer.addChild(holoRingContainer);
 
         mechContainer.addChildAt(shadowContainer, 0); // Add shadows behind the mech parts
 

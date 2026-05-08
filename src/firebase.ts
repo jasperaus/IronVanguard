@@ -3,7 +3,21 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Import the Firebase configuration
-import config from '../firebase-applet-config.json';
+import configJson from '../firebase-applet-config.json';
+
+// Type the relevant config properties we expect to be present in the JSON file
+interface FirebaseConfig {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
+  firestoreDatabaseId?: string;
+}
+
+const config = configJson as unknown as FirebaseConfig;
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || config.apiKey,
