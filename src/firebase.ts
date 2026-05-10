@@ -2,20 +2,29 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Import the Firebase configuration
-import config from '../firebase-applet-config.json';
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || config.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || config.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || config.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || config.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || config.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || config.appId,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || config.measurementId,
+// Ensure default mock config for safety
+const defaultConfig = {
+  apiKey: "AIzaSyFakeKeyForLocalDevelopment",
+  authDomain: "localhost",
+  projectId: "demo-project",
+  storageBucket: "demo.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef",
+  measurementId: "G-ABCDEF",
+  firestoreDatabaseId: "demo-db"
 };
 
-const firestoreDatabaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || config.firestoreDatabaseId;
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || defaultConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || defaultConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || defaultConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || defaultConfig.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || defaultConfig.measurementId,
+};
+
+const firestoreDatabaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || defaultConfig.firestoreDatabaseId;
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
