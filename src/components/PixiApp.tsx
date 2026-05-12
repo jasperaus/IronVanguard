@@ -497,14 +497,17 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     }
 
     // Sort mechs by Y position for proper isometric depth sorting (painter's algorithm)
-    const sortedMechs = [...state.mechs].filter(m => !m.isDestroyed).sort((a, b) => {
-      const posA = hexToPixel(a.position.q, a.position.r, HEX_SIZE);
-      const posB = hexToPixel(b.position.q, b.position.r, HEX_SIZE);
-      return posA.y - posB.y;
-    });
+    // Pre-compute positions to avoid expensive O(N log N) hexToPixel calls during sort
+    // and reuse them in the following loop to further improve performance.
+    const mechsWithPos = state.mechs
+      .filter(m => !m.isDestroyed)
+      .map(m => ({
+        mech: m,
+        pos: hexToPixel(m.position.q, m.position.r, HEX_SIZE)
+      }))
+      .sort((a, b) => a.pos.y - b.pos.y);
 
-    sortedMechs.forEach((mech, index) => {
-      const { x, y } = hexToPixel(mech.position.q, mech.position.r, HEX_SIZE);
+    mechsWithPos.forEach(({ mech, pos: { x, y } }, index) => {
       let mechContainer = mechSpritesRef.current[mech.id];
 
       if (!mechContainer) {
