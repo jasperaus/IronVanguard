@@ -1,7 +1,7 @@
 import { GameState, MechInstance, MechType } from './types';
 import { createMech } from './Mech';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, setDoc, collection, writeBatch } from 'firebase/firestore';
+import { doc, collection, writeBatch } from 'firebase/firestore';
 
 export async function initializeGame(id: string, playerIds: string[]): Promise<GameState> {
   const mechs: MechInstance[] = [];
