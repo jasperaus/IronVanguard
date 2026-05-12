@@ -9,7 +9,7 @@ import { GameState, MechInstance } from './game/types';
 import { generateAllAssets } from './services/assetGenerator';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
-import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { hexDistance } from './game/hexUtils';
 
 declare global {
@@ -202,23 +202,31 @@ export default function App() {
             const attackerMechRef = doc(db, 'games', gameState.id, 'mechs', mech.id);
             
             try {
-              await updateDoc(targetMechRef, { 'stats.hp': newHp, isDestroyed });
-              await updateDoc(attackerMechRef, { hasAttacked: true });
+              const batch = writeBatch(db);
+              batch.update(targetMechRef, { 'stats.hp': newHp, isDestroyed });
+              batch.update(attackerMechRef, { hasAttacked: true });
               
-              target.stats.hp = newHp;
-              target.isDestroyed = isDestroyed;
-              mech.hasAttacked = true;
-              
+              let gameOver = false;
               if (isDestroyed) {
                 const remainingPlayerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
                 if (remainingPlayerMechs.length === 0) {
                   const gameRef = doc(db, 'games', gameState.id);
-                  await updateDoc(gameRef, {
+                  batch.update(gameRef, {
                     status: 'finished',
                     winnerId: 'ai_1'
                   });
-                  return; // End turn early, game over
+                  gameOver = true;
                 }
+              }
+
+              await batch.commit();
+
+              target.stats.hp = newHp;
+              target.isDestroyed = isDestroyed;
+              mech.hasAttacked = true;
+
+              if (gameOver) {
+                return; // End turn early, game over
               }
             } catch (err) {
               console.error("AI attack failed", err);
