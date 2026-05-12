@@ -9,7 +9,7 @@ import { GameState, MechInstance } from './game/types';
 import { generateAllAssets } from './services/assetGenerator';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
-import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { hexDistance } from './game/hexUtils';
 
 declare global {
@@ -109,6 +109,8 @@ export default function App() {
         const currentMechs = [...gameState.mechs];
         const aiMechs = currentMechs.filter(m => m.ownerId === 'ai_1' && !m.isDestroyed);
         
+        const batch = writeBatch(db);
+
         for (const mech of aiMechs) {
           const playerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
           if (playerMechs.length === 0) break;
@@ -173,7 +175,7 @@ export default function App() {
 
               const mechRef = doc(db, 'games', gameState.id, 'mechs', mech.id);
               try {
-                await updateDoc(mechRef, { position: currentPos, hasMoved: true });
+                batch.update(mechRef, { position: currentPos, hasMoved: true });
                 mech.position = currentPos;
                 mech.hasMoved = true;
               } catch (err) {
@@ -202,8 +204,8 @@ export default function App() {
             const attackerMechRef = doc(db, 'games', gameState.id, 'mechs', mech.id);
             
             try {
-              await updateDoc(targetMechRef, { 'stats.hp': newHp, isDestroyed });
-              await updateDoc(attackerMechRef, { hasAttacked: true });
+              batch.update(targetMechRef, { 'stats.hp': newHp, isDestroyed });
+              batch.update(attackerMechRef, { hasAttacked: true });
               
               target.stats.hp = newHp;
               target.isDestroyed = isDestroyed;
@@ -213,10 +215,11 @@ export default function App() {
                 const remainingPlayerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
                 if (remainingPlayerMechs.length === 0) {
                   const gameRef = doc(db, 'games', gameState.id);
-                  await updateDoc(gameRef, {
+                  batch.update(gameRef, {
                     status: 'finished',
                     winnerId: 'ai_1'
                   });
+                  await batch.commit();
                   return; // End turn early, game over
                 }
               }
@@ -226,6 +229,12 @@ export default function App() {
           }
         }
         
+        try {
+          await batch.commit();
+        } catch (err) {
+          console.error("AI batch commit failed", err);
+        }
+
         // End AI turn
         await endTurn(gameState);
       };
