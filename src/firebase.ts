@@ -2,8 +2,10 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Import the Firebase configuration
-import config from '../firebase-applet-config.json';
+// Import the Firebase configuration if it exists
+// Using import.meta.glob to make the import optional and prevent build failures when missing
+const configs = import.meta.glob('../firebase-applet-config.json', { eager: true, import: 'default' });
+const config = (configs['../firebase-applet-config.json'] as any) || {};
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || config.apiKey,
