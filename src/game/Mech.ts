@@ -1,4 +1,4 @@
-import { MechInstance, MechStats, MechType } from './types';
+import type { MechInstance, MechStats, MechType } from './types';
 
 export const MECH_TEMPLATES: Record<MechType, MechStats> = {
   light: {
