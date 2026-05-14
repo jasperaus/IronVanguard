@@ -517,15 +517,17 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
       }
     }
 
-    // Sort mechs by Y position for proper isometric depth sorting (painter's algorithm)
-    const sortedMechs = [...state.mechs].filter(m => !m.isDestroyed).sort((a, b) => {
-      const posA = hexToPixel(a.position.q, a.position.r, HEX_SIZE);
-      const posB = hexToPixel(b.position.q, b.position.r, HEX_SIZE);
-      return posA.y - posB.y;
-    });
+    // Use Schwartzian transform to avoid excessive O(N log N) hexToPixel calls during sort
+    // and reuse them in the following loop to further improve performance.
+    const mechsWithPos = state.mechs
+      .filter(m => !m.isDestroyed)
+      .map(m => ({
+        mech: m,
+        pos: hexToPixel(m.position.q, m.position.r, HEX_SIZE)
+      }))
+      .sort((a, b) => a.pos.y - b.pos.y);
 
-    sortedMechs.forEach((mech, index) => {
-      const { x, y } = hexToPixel(mech.position.q, mech.position.r, HEX_SIZE);
+    mechsWithPos.forEach(({ mech, pos: { x, y } }, index) => {
       let mechContainer = mechSpritesRef.current[mech.id];
 
       if (!mechContainer) {
@@ -601,34 +603,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         coreShadow.filters = [coreBlur];
         shadowContainer.addChild(coreShadow);
 
-        // Holographic base ring under the mech
-        const holoRingContainer = new PIXI.Container();
-        holoRingContainer.name = 'holoRingContainer';
 
-        const holoRing = new PIXI.Graphics();
-        // Draw a perfect circle, the container will be squashed
-        holoRing.lineStyle(2, mech.ownerId === user?.uid ? 0x00ffaa : 0xff3333, 0.4);
-        holoRing.drawCircle(0, 0, HEX_SIZE * 0.8);
-
-        // Add dashed segments to the ring for a more high-tech look
-        for(let i=0; i<4; i++) {
-           const arc = new PIXI.Graphics();
-           arc.lineStyle(3, mech.ownerId === user?.uid ? 0x00ffaa : 0xff3333, 0.8);
-           arc.arc(0, 0, HEX_SIZE * 0.8, i * Math.PI/2, i * Math.PI/2 + Math.PI/4);
-           holoRing.addChild(arc);
-        }
-
-        holoRingContainer.addChild(holoRing);
-        holoRingContainer.scale.y = ISO_SQUASH;
-
-        // Add a subtle spinning animation to the circular graphic (inside the squashed container)
-        gsap.to(holoRing, {
-          rotation: Math.PI * 2,
-          duration: 8 + Math.random() * 4,
-          repeat: -1,
-          ease: "none"
-        });
-        shadowContainer.addChild(holoRingContainer);
 
         mechContainer.addChildAt(shadowContainer, 0); // Add shadows behind the mech parts
 
