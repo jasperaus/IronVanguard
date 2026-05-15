@@ -9,7 +9,7 @@ import { GameState, MechInstance } from './game/types';
 import { generateAllAssets } from './services/assetGenerator';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
-import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { hexDistance } from './game/hexUtils';
 
 declare global {
@@ -109,6 +109,9 @@ export default function App() {
         const currentMechs = [...gameState.mechs];
         const aiMechs = currentMechs.filter(m => m.ownerId === 'ai_1' && !m.isDestroyed);
         
+        const batch = writeBatch(db);
+        let gameOver = false;
+
         for (const mech of aiMechs) {
           const playerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
           if (playerMechs.length === 0) break;
@@ -172,13 +175,9 @@ export default function App() {
               }
 
               const mechRef = doc(db, 'games', gameState.id, 'mechs', mech.id);
-              try {
-                await updateDoc(mechRef, { position: currentPos, hasMoved: true });
-                mech.position = currentPos;
-                mech.hasMoved = true;
-              } catch (err) {
-                console.error("AI move failed", err);
-              }
+              batch.update(mechRef, { position: currentPos, hasMoved: true });
+              mech.position = currentPos;
+              mech.hasMoved = true;
             }
           }
           
@@ -201,33 +200,38 @@ export default function App() {
             const targetMechRef = doc(db, 'games', gameState.id, 'mechs', target.id);
             const attackerMechRef = doc(db, 'games', gameState.id, 'mechs', mech.id);
             
-            try {
-              await updateDoc(targetMechRef, { 'stats.hp': newHp, isDestroyed });
-              await updateDoc(attackerMechRef, { hasAttacked: true });
-              
-              target.stats.hp = newHp;
-              target.isDestroyed = isDestroyed;
-              mech.hasAttacked = true;
-              
-              if (isDestroyed) {
-                const remainingPlayerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
-                if (remainingPlayerMechs.length === 0) {
-                  const gameRef = doc(db, 'games', gameState.id);
-                  await updateDoc(gameRef, {
-                    status: 'finished',
-                    winnerId: 'ai_1'
-                  });
-                  return; // End turn early, game over
-                }
+            batch.update(targetMechRef, { 'stats.hp': newHp, isDestroyed });
+            batch.update(attackerMechRef, { hasAttacked: true });
+
+            target.stats.hp = newHp;
+            target.isDestroyed = isDestroyed;
+            mech.hasAttacked = true;
+
+            if (isDestroyed) {
+              const remainingPlayerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
+              if (remainingPlayerMechs.length === 0) {
+                const gameRef = doc(db, 'games', gameState.id);
+                batch.update(gameRef, {
+                  status: 'finished',
+                  winnerId: 'ai_1'
+                });
+                gameOver = true;
+                break; // End turn early, game over
               }
-            } catch (err) {
-              console.error("AI attack failed", err);
             }
           }
         }
         
-        // End AI turn
-        await endTurn(gameState);
+        try {
+          await batch.commit();
+        } catch (err) {
+          console.error("AI turn batch commit failed", err);
+        }
+
+        if (!gameOver) {
+          // End AI turn
+          await endTurn(gameState);
+        }
       };
       
       runAITurn();
