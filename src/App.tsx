@@ -9,7 +9,7 @@ import { GameState, MechInstance } from './game/types';
 import { generateAllAssets } from './services/assetGenerator';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
-import { onSnapshot, doc, collection, query, where, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { onSnapshot, doc, collection, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { hexDistance } from './game/hexUtils';
 
 declare global {
