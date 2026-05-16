@@ -414,6 +414,17 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     
     const graphics = new PIXI.Graphics();
     
+    // Performance optimization: Pre-calculate enemy positions before the hex loop
+    // This turns an O(N) lookup inside an O(H) loop into O(1)
+    const enemyPositions = new Set<string>();
+    if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasAttacked) {
+      for (const m of gameState.mechs) {
+        if (m.ownerId !== user?.uid && !m.isDestroyed) {
+          enemyPositions.add(`${m.position.q},${m.position.r}`);
+        }
+      }
+    }
+
     for (let q = -8; q <= 8; q++) {
       for (let r = -8; r <= 8; r++) {
         const { x, y } = hexToPixel(q, r, HEX_SIZE);
@@ -441,7 +452,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
            const distToSelected = hexDistance(selectedMech.position, { q, r });
            if (distToSelected <= selectedMech.stats.range && distToSelected > 0) {
              // If there's an enemy here, highlight red
-             const enemyHere = gameState.mechs.find(m => m.position.q === q && m.position.r === r && m.ownerId !== user.uid && !m.isDestroyed);
+             const enemyHere = enemyPositions.has(`${q},${r}`);
              if (enemyHere) {
                fillColor = 0xff3333;
                fillAlpha = 0.25;
