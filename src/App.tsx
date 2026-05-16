@@ -108,25 +108,24 @@ export default function App() {
         // Work with a shallow copy to track state changes during the loop
         const currentMechs = [...gameState.mechs];
         const aiMechs = currentMechs.filter(m => m.ownerId === 'ai_1' && !m.isDestroyed);
+        const playerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1');
         
         // Pre-compute occupied hexes for O(1) lookup
         const occupiedHexes = new Set();
         currentMechs.filter(m => !m.isDestroyed).forEach(m => occupiedHexes.add(`${m.position.q},${m.position.r}`));
 
         for (const mech of aiMechs) {
-          const playerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
-          if (playerMechs.length === 0) break;
-
-          // Find closest player mech
           let target = playerMechs[0];
-          let minDistToTarget = hexDistance(mech.position, target.position);
+          let minDistToTarget = Infinity;
           for (const pm of playerMechs) {
+            if (pm.isDestroyed) continue;
             const d = hexDistance(mech.position, pm.position);
             if (d < minDistToTarget) {
               minDistToTarget = d;
               target = pm;
             }
           }
+          if (minDistToTarget === Infinity) break;
           
           if (minDistToTarget > mech.stats.range && !mech.hasMoved) {
             // Move closer (up to movement stat)
