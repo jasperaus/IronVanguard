@@ -109,6 +109,10 @@ export default function App() {
         const currentMechs = [...gameState.mechs];
         const aiMechs = currentMechs.filter(m => m.ownerId === 'ai_1' && !m.isDestroyed);
         
+        // Pre-compute occupied hexes for O(1) lookup
+        const occupiedHexes = new Set();
+        currentMechs.filter(m => !m.isDestroyed).forEach(m => occupiedHexes.add(`${m.position.q},${m.position.r}`));
+
         for (const mech of aiMechs) {
           const playerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
           if (playerMechs.length === 0) break;
@@ -130,6 +134,9 @@ export default function App() {
             let movesLeft = mech.stats.movement;
             let hasMoved = false;
 
+            // Temporarily remove this mech's starting position from occupied set
+            occupiedHexes.delete(`${currentPos.q},${currentPos.r}`);
+
             while (movesLeft > 0) {
               const neighbors = [
                 { q: currentPos.q + 1, r: currentPos.r },
@@ -144,7 +151,7 @@ export default function App() {
               let minDist = hexDistance(currentPos, target.position);
               
               for (const n of neighbors) {
-                const occupied = currentMechs.some(m => m.position.q === n.q && m.position.r === n.r && !m.isDestroyed);
+                const occupied = occupiedHexes.has(`${n.q},${n.r}`);
                 if (!occupied) {
                   const d = hexDistance(n, target.position);
                   if (d < minDist) {
@@ -163,6 +170,9 @@ export default function App() {
               }
             }
             
+            // Add the mech's final position back to occupied set
+            occupiedHexes.add(`${currentPos.q},${currentPos.r}`);
+
             if (hasMoved) {
               if (pixiAppRef.current) {
                 pixiAppRef.current.playDustAnimation(mech.position);
