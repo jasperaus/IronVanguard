@@ -438,7 +438,9 @@ export default function App() {
           <p className="text-emerald-500/70 text-sm mb-8 uppercase tracking-widest">Tactical Mech Command</p>
           <button 
             onClick={handleLogin}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-black font-bold py-4 rounded-sm transition-all uppercase tracking-widest flex items-center justify-center gap-3"
+            aria-label="Initialize Neural Link with Google Login"
+            title="Login with Google"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-black font-bold py-4 rounded-sm transition-all uppercase tracking-widest flex items-center justify-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           >
             <span>Initialize Neural Link</span>
             <span className="text-xs opacity-50">(Google Login)</span>
@@ -501,7 +503,9 @@ export default function App() {
                 </p>
                 <button 
                   onClick={() => window.location.reload()}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-black font-bold px-12 py-4 rounded-sm transition-all uppercase tracking-widest"
+                  aria-label="Return to Command"
+                  title="Return to Command"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-black font-bold px-12 py-4 rounded-sm transition-all uppercase tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 >
                   Return to Command
                 </button>
