@@ -219,8 +219,8 @@ export default function App() {
               mech.hasAttacked = true;
               
               if (isDestroyed) {
-                const remainingPlayerMechs = currentMechs.filter(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
-                if (remainingPlayerMechs.length === 0) {
+                const hasPlayerMechs = currentMechs.some(m => m.ownerId !== 'ai_1' && !m.isDestroyed);
+                if (!hasPlayerMechs) {
                   const gameRef = doc(db, 'games', gameState.id);
                   await updateDoc(gameRef, {
                     status: 'finished',
@@ -349,15 +349,17 @@ export default function App() {
             let newGameState = { ...gameState, mechs: newMechs };
 
             // Check win condition
-            const opponentMechs = newMechs.filter(m => m.ownerId !== user.uid && !m.isDestroyed);
-            if (opponentMechs.length === 0) {
-              const gameRef = doc(db, 'games', gameState.id);
-              await updateDoc(gameRef, {
-                status: 'finished',
-                winnerId: user.uid
-              });
-              newGameState.status = 'finished';
-              newGameState.winnerId = user.uid;
+            if (isDestroyed) {
+              const hasOpponentMechs = newMechs.some(m => m.ownerId !== user.uid && !m.isDestroyed);
+              if (!hasOpponentMechs) {
+                const gameRef = doc(db, 'games', gameState.id);
+                await updateDoc(gameRef, {
+                  status: 'finished',
+                  winnerId: user.uid
+                });
+                newGameState.status = 'finished';
+                newGameState.winnerId = user.uid;
+              }
             }
 
             setGameState(newGameState);
