@@ -1,4 +1,4 @@
-import { MechInstance } from './types';
+import type { MechInstance } from './types.ts';
 
 export function calculateDamage(attacker: MechInstance, defender: MechInstance): number {
   // Simple damage calculation for now
