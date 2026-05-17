@@ -13,6 +13,18 @@ interface HUDProps {
 export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, isMyTurn, assets }) => {
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'e' || e.key === 'E') && isMyTurn && !isConfirmingReset) {
+        e.preventDefault();
+        onEndTurn();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMyTurn, isConfirmingReset, onEndTurn]);
+
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-10">
       {/* CRT Overlay for HUD elements */}
@@ -42,6 +54,7 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
               <li><span className="text-emerald-400">CLICK</span> friendly mech to select</li>
               <li><span className="text-emerald-400">CLICK</span> highlighted hex to move</li>
               <li><span className="text-red-400">CLICK</span> enemy in range to attack</li>
+              <li><span className="text-emerald-400">E</span> to end turn</li>
             </ul>
           </div>
         </div>
@@ -82,8 +95,9 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
           <button 
             onClick={onEndTurn}
             disabled={!isMyTurn}
-            aria-label={isMyTurn ? "End your turn" : "Wait for enemy turn"}
-            title={isMyTurn ? "End your turn" : "Wait for enemy turn"}
+            aria-label={isMyTurn ? "End your turn (E)" : "Wait for enemy turn"}
+            title={isMyTurn ? "End your turn (E)" : "Wait for enemy turn"}
+            aria-keyshortcuts="e"
             className={`font-mono font-bold px-6 py-2 rounded-sm transition-colors uppercase tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
               isMyTurn 
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-black' 
