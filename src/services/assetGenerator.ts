@@ -50,7 +50,6 @@ export async function generateAllAssets(onProgress?: (progress: number, currentA
       results[asset.name] = url;
     } else if (geminiApiKey) {
       try {
-        console.log(`Generating asset ${asset.name} via Gemini AI...`);
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
         const response = await ai.models.generateImages({
@@ -67,7 +66,6 @@ export async function generateAllAssets(onProgress?: (progress: number, currentA
             const base64Image = response.generatedImages[0].image.imageBytes;
             const dataUrl = `data:image/png;base64,${base64Image}`;
             results[asset.name] = dataUrl;
-            console.log(`Successfully generated ${asset.name}`);
         } else {
             console.warn(`Failed to generate ${asset.name}, falling back to procedural.`);
             results[asset.name] = "";
