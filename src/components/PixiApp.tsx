@@ -73,6 +73,434 @@ void main(void)
 const transparencyFilter = PIXI.Filter.from({ gl: { vertex: defaultFilterVertex, fragment: whiteRemovalShader } });
 transparencyFilter.padding = 100; // Prevent clipping on the edges of the mech sprite
 
+
+function cleanupDestroyedMechs(
+  container: PIXI.Container,
+  currentMechIds: Set<string>,
+  mechSpritesRef: React.MutableRefObject<Record<string, MechSpriteContainer>>
+) {
+  for (const id in mechSpritesRef.current) {
+    if (!currentMechIds.has(id)) {
+      const containerToRemove = mechSpritesRef.current[id];
+
+      gsap.killTweensOf(containerToRemove as any);
+      containerToRemove.children.forEach(child => {
+          gsap.killTweensOf(child as any);
+          if (child.name === 'jumpContainer') {
+              const idle = (child as PIXI.Container).getChildByName('idleContainer');
+              if (idle) {
+                  gsap.killTweensOf(idle as any);
+                  const sprite = (idle as PIXI.Container).getChildByName('spriteContainer');
+                  if (sprite) gsap.killTweensOf(sprite as any);
+              }
+          }
+      });
+
+      container.removeChild(containerToRemove);
+      containerToRemove.destroy({ children: true });
+      delete mechSpritesRef.current[id];
+    }
+  }
+}
+
+function initializeMechContainer(
+  mech: MechInstance,
+  isOwner: boolean,
+  texture: PIXI.Texture | undefined,
+  onHexClick: (q: number, r: number) => void
+): MechSpriteContainer {
+  let mechContainer: MechSpriteContainer;
+
+  let targetHeight = HEX_SIZE * 2.5;
+  let hitWidth = 60;
+  if (mech.type === 'heavy') {
+    targetHeight = HEX_SIZE * 3.2;
+    hitWidth = 80;
+  } else if (mech.type === 'light') {
+    targetHeight = HEX_SIZE * 1.8;
+    hitWidth = 50;
+  }
+
+  if (texture) {
+    mechContainer = new PIXI.Container() as MechSpriteContainer;
+    const partsContainer = new PIXI.Container();
+    mechContainer.partsContainer = partsContainer;
+    mechContainer.addChild(partsContainer);
+
+    const sprite = new PIXI.Sprite(texture);
+    sprite.name = 'sprite';
+    sprite.anchor.set(0.5, 0.92);
+
+    const scale = targetHeight / texture.height;
+
+    sprite.scale.set(scale, scale / ISO_SQUASH);
+    sprite.tint = 0xeef5ff;
+
+    partsContainer.addChild(sprite);
+
+    mechContainer.updateRotation = (angle: number) => {
+      const isMovingLeft = Math.abs(angle) > Math.PI / 2;
+      gsap.to(sprite.scale, {
+        x: isMovingLeft ? -scale : scale,
+        duration: 0.2
+      });
+    };
+  } else {
+    mechContainer = createProceduralMech(mech, isOwner);
+  }
+
+  const shadowContainer = new PIXI.Container();
+  shadowContainer.name = 'shadowContainer';
+
+  const ambientShadow = new PIXI.Graphics();
+  ambientShadow.beginFill(0x000000, 0.6);
+  ambientShadow.drawEllipse(0, 0, HEX_SIZE * 1.2, HEX_SIZE * 1.2 * ISO_SQUASH);
+  ambientShadow.endFill();
+  const ambientBlur = new PIXI.BlurFilter();
+  ambientBlur.blur = 15;
+  ambientShadow.filters = [ambientBlur];
+  shadowContainer.addChild(ambientShadow);
+
+  const holoRingContainer = new PIXI.Container();
+  const holoRing = new PIXI.Graphics();
+
+  holoRing.lineStyle(2, isOwner ? 0x00ffaa : 0xff3333, 0.3);
+  holoRing.beginFill(isOwner ? 0x00ffaa : 0xff3333, 0.05);
+  holoRing.drawCircle(0, 0, HEX_SIZE * 0.9);
+  holoRing.endFill();
+
+  for(let i=0; i<4; i++) {
+     const arc = new PIXI.Graphics();
+     arc.lineStyle(3, isOwner ? 0x00ffaa : 0xff3333, 0.8);
+     arc.arc(0, 0, HEX_SIZE * 0.8, i * Math.PI/2, i * Math.PI/2 + Math.PI/4);
+     holoRing.addChild(arc);
+  }
+
+  holoRingContainer.addChild(holoRing);
+  holoRingContainer.scale.y = ISO_SQUASH;
+
+  gsap.to(holoRing, {
+    rotation: Math.PI * 2,
+    duration: 8 + Math.random() * 4,
+    repeat: -1,
+    ease: "none"
+  });
+  shadowContainer.addChild(holoRingContainer);
+
+  mechContainer.addChildAt(shadowContainer, 0);
+
+  mechContainer.eventMode = 'static';
+  mechContainer.cursor = 'pointer';
+  mechContainer.hitArea = new PIXI.Rectangle(-hitWidth/2, -targetHeight, hitWidth, targetHeight + 20);
+
+  if (mechContainer.partsContainer) {
+    gsap.to(mechContainer.partsContainer, {
+      y: -4,
+      duration: 1.5 + Math.random() * 0.5,
+      yoyo: true,
+      repeat: -1,
+      ease: "sine.inOut"
+    });
+  }
+
+  const uiContainer = new PIXI.Container();
+  uiContainer.name = 'uiContainer';
+  uiContainer.y = -targetHeight - 15;
+  uiContainer.scale.y = 1 / ISO_SQUASH;
+
+  const hpBarBg = new PIXI.Graphics();
+  hpBarBg.name = 'hpBarBg';
+  hpBarBg.beginFill(0x111111, 0.8);
+  hpBarBg.lineStyle(1, 0x333333);
+  hpBarBg.drawRect(-20, 0, 40, 6);
+  hpBarBg.endFill();
+  uiContainer.addChild(hpBarBg);
+
+  const hpBar = new PIXI.Graphics();
+  hpBar.name = 'hpBar';
+  uiContainer.addChild(hpBar);
+
+  mechContainer.addChild(uiContainer);
+
+  return mechContainer;
+}
+
+function animateMovement(mechContainer: MechSpriteContainer, x: number, y: number) {
+  const dx = x - mechContainer.x;
+  const dy = y - mechContainer.y;
+  const angle = Math.atan2(dy, dx);
+
+  if (mechContainer.updateRotation) {
+    mechContainer.updateRotation(angle);
+  }
+
+  const shadow = mechContainer.getChildByName('shadow') as PIXI.Graphics;
+
+  gsap.to(mechContainer, {
+    x: x,
+    y: y,
+    duration: 0.6,
+    ease: "power1.inOut"
+  });
+
+  if (mechContainer.partsContainer) {
+    gsap.to(mechContainer.partsContainer, {
+      y: -60,
+      duration: 0.3,
+      yoyo: true,
+      repeat: 1,
+      ease: "power2.out"
+    });
+
+    const parts = mechContainer.partsContainer;
+    gsap.to(parts.scale, {
+      x: 0.9,
+      y: 1.1,
+      duration: 0.3,
+      yoyo: true,
+      repeat: 1,
+      ease: "power2.out",
+      onComplete: () => {
+        gsap.to(parts.scale, {
+          x: 1.15,
+          y: 0.85,
+          duration: 0.1,
+          yoyo: true,
+          repeat: 1,
+          ease: "power2.inOut"
+        });
+      }
+    });
+  }
+
+  if (shadow) {
+    gsap.to(shadow.scale, {
+      x: 0.4,
+      y: 0.4,
+      duration: 0.3,
+      yoyo: true,
+      repeat: 1,
+      ease: "power2.out"
+    });
+    gsap.to(shadow, {
+      alpha: 0.2,
+      duration: 0.3,
+      yoyo: true,
+      repeat: 1,
+      ease: "power2.out"
+    });
+  }
+}
+
+function updateHealthUi(mechContainer: MechSpriteContainer, hpPercent: number) {
+  const uiContainer = mechContainer.getChildByName('uiContainer') as PIXI.Container;
+
+  if (uiContainer) {
+    const hpBar = uiContainer.getChildByName('hpBar') as PIXI.Graphics;
+    if (hpBar) {
+      hpBar.clear();
+      const hpColor = hpPercent > 0.5 ? 0x00ff00 : hpPercent > 0.25 ? 0xffff00 : 0xff0000;
+      hpBar.beginFill(hpColor);
+      hpBar.drawRect(-19, 1, Math.max(0, 38 * hpPercent), 4);
+      hpBar.endFill();
+    }
+  }
+}
+
+function updateDamageEffects(mechContainer: MechSpriteContainer, hpPercent: number, hp: number) {
+  let damageParticles = mechContainer.getChildByName('damageParticles') as PIXI.Container;
+  if (!damageParticles) {
+    damageParticles = new PIXI.Container();
+    damageParticles.name = 'damageParticles';
+    damageParticles.y = -30;
+    mechContainer.addChild(damageParticles);
+
+    const particles: any[] = [];
+    let spawnTimer = 0;
+
+    (damageParticles as any).update = (delta: number) => {
+      const severity = (damageParticles as any).severity;
+      if (severity > 0.5) return;
+
+      spawnTimer -= delta;
+      if (spawnTimer <= 0) {
+        spawnTimer = severity < 0.25 ? 3 : 8;
+
+        const isSpark = severity < 0.25 && Math.random() > 0.6;
+        const p = new PIXI.Graphics() as any;
+
+        if (isSpark) {
+          p.beginFill(Math.random() > 0.5 ? 0xffaa00 : 0xff3300);
+          p.drawRect(-2, -2, 4, 4);
+          p.endFill();
+          p.vy = -Math.random() * 4 - 2;
+          p.vx = (Math.random() - 0.5) * 6;
+          p.life = 1.0;
+          p.decay = 0.04 + Math.random() * 0.04;
+          p.isSpark = true;
+        } else {
+          p.beginFill(severity < 0.25 ? 0x222222 : 0x555555, 0.7);
+          p.drawCircle(0, 0, Math.random() * 6 + 4);
+          p.endFill();
+          p.vy = -Math.random() * 2 - 1;
+          p.vx = (Math.random() - 0.5) * 2;
+          p.life = 1.0;
+          p.decay = 0.015 + Math.random() * 0.01;
+          p.scale.set(0.5);
+          p.isSpark = false;
+        }
+
+        p.x = (Math.random() - 0.5) * 30;
+        p.y = (Math.random() - 0.5) * 30;
+
+        damageParticles.addChild(p);
+        particles.push(p);
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * delta;
+        p.y += p.vy * delta;
+        p.life -= p.decay * delta;
+
+        if (p.isSpark) {
+          p.vy += 0.15 * delta;
+          p.alpha = p.life;
+        } else {
+          p.scale.set(p.scale.x + 0.03 * delta);
+          p.alpha = p.life;
+        }
+
+        if (p.life <= 0) {
+          damageParticles.removeChild(p);
+          p.destroy();
+          particles.splice(i, 1);
+        }
+      }
+    };
+  }
+  (damageParticles as any).severity = hpPercent;
+
+  if (mechContainer.partsContainer) {
+    const sprite = mechContainer.partsContainer.getChildByName('sprite') as PIXI.Sprite;
+    if (sprite) {
+      if (hpPercent <= 0.25) sprite.tint = 0x888888;
+      else if (hpPercent <= 0.5) sprite.tint = 0xbbbbbb;
+      else sprite.tint = 0xffffff;
+    }
+  }
+
+  const prevHp = (mechContainer as any)._prevHp;
+  if (prevHp !== undefined && hp < prevHp) {
+    const jumpContainer = mechContainer.getChildByName('jumpContainer') as PIXI.Container;
+    const idleContainer = jumpContainer?.getChildByName('idleContainer') as PIXI.Container;
+    const spriteContainer = idleContainer?.getChildByName('spriteContainer') as PIXI.Container;
+
+    let targetContainer = spriteContainer;
+    if (!targetContainer && mechContainer.partsContainer) {
+        targetContainer = mechContainer.partsContainer;
+    }
+
+    if (targetContainer) {
+      const colorMatrix = new PIXI.ColorMatrixFilter();
+      colorMatrix.tint(0xff0000, true);
+
+      const existingFilters = targetContainer.filters
+        ? (Array.isArray(targetContainer.filters) ? [...targetContainer.filters] : [targetContainer.filters])
+        : [];
+      targetContainer.filters = [...existingFilters, colorMatrix];
+
+      gsap.to(targetContainer, {
+        x: 5,
+        yoyo: true,
+        repeat: 5,
+        duration: 0.05,
+        onComplete: () => {
+          targetContainer.x = 0;
+          targetContainer.filters = existingFilters.length > 0 ? existingFilters : null;
+          colorMatrix.destroy();
+        }
+      });
+    }
+  }
+  (mechContainer as any)._prevHp = hp;
+}
+
+function updateSelectionVisuals(mechContainer: MechSpriteContainer, isSelected: boolean) {
+  let selectionRing = mechContainer.getChildByName('selectionRing') as PIXI.Graphics;
+  let selectionArrows = mechContainer.getChildByName('selectionArrows') as PIXI.Container;
+
+  if (isSelected) {
+    if (!selectionRing) {
+      selectionRing = new PIXI.Graphics();
+      selectionRing.name = 'selectionRing';
+      mechContainer.addChildAt(selectionRing, 0);
+
+      selectionArrows = new PIXI.Container();
+      selectionArrows.name = 'selectionArrows';
+      mechContainer.addChild(selectionArrows);
+
+      for (let i = 0; i < 4; i++) {
+        const arrow = new PIXI.Graphics();
+        arrow.beginFill(0x00ffaa);
+        arrow.moveTo(0, -10);
+        arrow.lineTo(5, 0);
+        arrow.lineTo(-5, 0);
+        arrow.endFill();
+        arrow.y = -60;
+        arrow.rotation = (Math.PI / 2) * i;
+
+        arrow.x = Math.cos(arrow.rotation - Math.PI/2) * 40;
+        arrow.y = Math.sin(arrow.rotation - Math.PI/2) * 40 - 20;
+
+        selectionArrows.addChild(arrow);
+      }
+
+      gsap.to(selectionRing, {
+        alpha: 0.3,
+        duration: 1,
+        yoyo: true,
+        repeat: -1,
+        ease: "sine.inOut"
+      });
+
+      gsap.to(selectionArrows, {
+        rotation: Math.PI * 2,
+        duration: 4,
+        repeat: -1,
+        ease: "linear"
+      });
+
+      gsap.to(selectionArrows.scale, {
+        x: 0.8,
+        y: 0.8,
+        duration: 0.5,
+        yoyo: true,
+        repeat: -1,
+        ease: "sine.inOut"
+      });
+    }
+    selectionRing.clear();
+    selectionRing.lineStyle(2, 0x00ffaa, 0.8);
+    selectionRing.beginFill(0x00ffaa, 0.1);
+    selectionRing.drawEllipse(0, 15, 35, 18);
+    selectionRing.endFill();
+  } else {
+    if (selectionRing) {
+      gsap.killTweensOf(selectionRing);
+      mechContainer.removeChild(selectionRing);
+      selectionRing.destroy();
+    }
+    if (selectionArrows) {
+      gsap.killTweensOf(selectionArrows);
+      gsap.killTweensOf(selectionArrows.scale);
+      mechContainer.removeChild(selectionArrows);
+      selectionArrows.destroy({ children: true });
+    }
+  }
+}
+
+
 export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets, onHexClick, selectedMech, user }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
@@ -499,34 +927,12 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     container.addChild(graphics);
   };
 
-  const updateMechs = (container: PIXI.Container, state: GameState) => {
+    const updateMechs = (container: PIXI.Container, state: GameState) => {
     // Keep track of which mechs are still alive
     const currentMechIds = new Set(state.mechs.filter(m => !m.isDestroyed).map(m => m.id));
 
     // Remove destroyed mechs
-    for (const id in mechSpritesRef.current) {
-      if (!currentMechIds.has(id)) {
-        const containerToRemove = mechSpritesRef.current[id];
-        
-        // Kill all GSAP tweens on this container and its children
-        gsap.killTweensOf(containerToRemove as any);
-        containerToRemove.children.forEach(child => {
-            gsap.killTweensOf(child as any);
-            if (child.name === 'jumpContainer') {
-                const idle = (child as PIXI.Container).getChildByName('idleContainer');
-                if (idle) {
-                    gsap.killTweensOf(idle as any);
-                    const sprite = (idle as PIXI.Container).getChildByName('spriteContainer');
-                    if (sprite) gsap.killTweensOf(sprite as any);
-                }
-            }
-        });
-
-        container.removeChild(containerToRemove);
-        containerToRemove.destroy({ children: true });
-        delete mechSpritesRef.current[id];
-      }
-    }
+    cleanupDestroyedMechs(container, currentMechIds, mechSpritesRef);
 
     // Sort mechs by Y position for proper isometric depth sorting (painter's algorithm)
     const sortedMechs = [...state.mechs].filter(m => !m.isDestroyed).sort((a, b) => {
@@ -541,145 +947,14 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       if (!mechContainer) {
         const texture = texturesRef.current[`mech_${mech.type}`];
-        
-        // Determine size based on mech class (scaled down to fit landscape better)
-        let targetHeight = HEX_SIZE * 2.5; 
-        let hitWidth = 60;
-        if (mech.type === 'heavy') {
-          targetHeight = HEX_SIZE * 3.2;
-          hitWidth = 80;
-        } else if (mech.type === 'light') {
-          targetHeight = HEX_SIZE * 1.8;
-          hitWidth = 50;
-        }
-
-        if (texture) {
-          mechContainer = new PIXI.Container() as MechSpriteContainer;
-          const partsContainer = new PIXI.Container();
-          mechContainer.partsContainer = partsContainer;
-          mechContainer.addChild(partsContainer);
-
-          const sprite = new PIXI.Sprite(texture);
-          sprite.name = 'sprite';
-          sprite.anchor.set(0.5, 0.92); // Anchor exactly at the feet
-          
-          const scale = targetHeight / texture.height;
-          
-          // Un-squash the Y axis so it stands up in the isometric view
-          sprite.scale.set(scale, scale / ISO_SQUASH);
-          
-          // Add a slight environmental tint (blue/grey) to ground it in the scene
-          sprite.tint = 0xeef5ff;
-          
-          partsContainer.addChild(sprite);
-
-          mechContainer.updateRotation = (angle: number) => {
-            const isMovingLeft = Math.abs(angle) > Math.PI / 2;
-            gsap.to(sprite.scale, {
-              x: isMovingLeft ? -scale : scale,
-              duration: 0.2
-            });
-          };
-        } else {
-          // Fallback to procedural
-          mechContainer = createProceduralMech(mech, mech.ownerId === user?.uid);
-        }
-
+        mechContainer = initializeMechContainer(
+          mech,
+          mech.ownerId === user?.uid,
+          texture,
+          onHexClick
+        );
         mechContainer.x = x;
         mechContainer.y = y;
-        
-        // Base/Shadows - Isometric projection
-        const shadowContainer = new PIXI.Container();
-        shadowContainer.name = 'shadowContainer';
-        
-        // Ambient soft shadow - adjusted for holotable glow
-        const ambientShadow = new PIXI.Graphics();
-        ambientShadow.beginFill(0x000000, 0.6);
-        ambientShadow.drawEllipse(0, 0, HEX_SIZE * 1.2, HEX_SIZE * 1.2 * ISO_SQUASH);
-        ambientShadow.endFill();
-        const ambientBlur = new PIXI.BlurFilter();
-        ambientBlur.blur = 15;
-        ambientShadow.filters = [ambientBlur];
-        shadowContainer.addChild(ambientShadow);
-
-        // Core dark shadow directly under feet
-        const coreShadow = new PIXI.Graphics();
-        coreShadow.beginFill(0x000000, 0.9);
-        coreShadow.drawEllipse(0, 0, HEX_SIZE * 0.6, HEX_SIZE * 0.6 * ISO_SQUASH);
-        coreShadow.endFill();
-        const coreBlur = new PIXI.BlurFilter();
-        coreBlur.blur = 6;
-        coreShadow.filters = [coreBlur];
-        shadowContainer.addChild(coreShadow);
-
-        // Holographic base ring under the mech
-        const holoRingContainer = new PIXI.Container();
-        holoRingContainer.name = 'holoRingContainer';
-
-        const holoRing = new PIXI.Graphics();
-        // Draw a perfect circle, the container will be squashed
-        holoRing.lineStyle(2, mech.ownerId === user?.uid ? 0x00ffaa : 0xff3333, 0.4);
-        holoRing.drawCircle(0, 0, HEX_SIZE * 0.8);
-
-        // Add dashed segments to the ring for a more high-tech look
-        for(let i=0; i<4; i++) {
-           const arc = new PIXI.Graphics();
-           arc.lineStyle(3, mech.ownerId === user?.uid ? 0x00ffaa : 0xff3333, 0.8);
-           arc.arc(0, 0, HEX_SIZE * 0.8, i * Math.PI/2, i * Math.PI/2 + Math.PI/4);
-           holoRing.addChild(arc);
-        }
-
-        holoRingContainer.addChild(holoRing);
-        holoRingContainer.scale.y = ISO_SQUASH;
-
-        // Add a subtle spinning animation to the circular graphic (inside the squashed container)
-        gsap.to(holoRing, {
-          rotation: Math.PI * 2,
-          duration: 8 + Math.random() * 4,
-          repeat: -1,
-          ease: "none"
-        });
-        shadowContainer.addChild(holoRingContainer);
-
-        mechContainer.addChildAt(shadowContainer, 0); // Add shadows behind the mech parts
-
-        // Make the mech container interactive
-        mechContainer.eventMode = 'static';
-        mechContainer.cursor = 'pointer';
-        // Explicit hit area for easier selection, scaled to the mech's height
-        mechContainer.hitArea = new PIXI.Rectangle(-hitWidth/2, -targetHeight, hitWidth, targetHeight + 20);
-        
-        // Start Idle Animation (bobbing the mech parts slightly)
-        if (mechContainer.partsContainer) {
-          gsap.to(mechContainer.partsContainer, {
-            y: -4,
-            duration: 1.5 + Math.random() * 0.5,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut"
-          });
-        }
-
-        // Health Bar Container (un-squashed)
-        const uiContainer = new PIXI.Container();
-        uiContainer.name = 'uiContainer';
-        uiContainer.y = -targetHeight - 15; // Position dynamically above the mech
-        uiContainer.scale.y = 1 / ISO_SQUASH; // Un-squash UI
-        
-        const hpBarBg = new PIXI.Graphics();
-        hpBarBg.name = 'hpBarBg';
-        hpBarBg.beginFill(0x111111, 0.8);
-        hpBarBg.lineStyle(1, 0x333333);
-        hpBarBg.drawRect(-20, 0, 40, 6);
-        hpBarBg.endFill();
-        uiContainer.addChild(hpBarBg);
-        
-        const hpBar = new PIXI.Graphics();
-        hpBar.name = 'hpBar';
-        uiContainer.addChild(hpBar);
-        
-        mechContainer.addChild(uiContainer);
-        
         container.addChild(mechContainer);
         mechSpritesRef.current[mech.id] = mechContainer;
       }
@@ -696,296 +971,18 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       // Animate movement
       if (mechContainer.x !== x || mechContainer.y !== y) {
-        // Determine facing direction based on movement
-        const dx = x - mechContainer.x;
-        const dy = y - mechContainer.y;
-        const angle = Math.atan2(dy, dx);
-        
-        // Update rotation visually
-        if (mechContainer.updateRotation) {
-          mechContainer.updateRotation(angle);
-        }
-
-        const shadow = mechContainer.getChildByName('shadow') as PIXI.Graphics;
-
-        // X/Y Movement
-        gsap.to(mechContainer, {
-          x: x,
-          y: y,
-          duration: 0.6,
-          ease: "power1.inOut"
-        });
-
-        // Jump Arc (Y-axis offset)
-        if (mechContainer.partsContainer) {
-          // Arc
-          gsap.to(mechContainer.partsContainer, {
-            y: -60,
-            duration: 0.3,
-            yoyo: true,
-            repeat: 1,
-            ease: "power2.out"
-          });
-          
-          // Squash and stretch
-          const parts = mechContainer.partsContainer;
-          gsap.to(parts.scale, {
-            x: 0.9,
-            y: 1.1,
-            duration: 0.3,
-            yoyo: true,
-            repeat: 1,
-            ease: "power2.out",
-            onComplete: () => {
-              // Landing impact squash
-              gsap.to(parts.scale, {
-                x: 1.15,
-                y: 0.85,
-                duration: 0.1,
-                yoyo: true,
-                repeat: 1,
-                ease: "power2.inOut"
-              });
-            }
-          });
-        }
-
-        // Shadow scaling during jump
-        if (shadow) {
-          gsap.to(shadow.scale, {
-            x: 0.4,
-            y: 0.4,
-            duration: 0.3,
-            yoyo: true,
-            repeat: 1,
-            ease: "power2.out"
-          });
-          gsap.to(shadow, {
-            alpha: 0.2,
-            duration: 0.3,
-            yoyo: true,
-            repeat: 1,
-            ease: "power2.out"
-          });
-        }
+        animateMovement(mechContainer, x, y);
       }
 
       // Update Health Bar and check for damage
-      const uiContainer = mechContainer.getChildByName('uiContainer') as PIXI.Container;
       const hpPercent = mech.stats.hp / mech.stats.maxHp;
-      
-      if (uiContainer) {
-        const hpBar = uiContainer.getChildByName('hpBar') as PIXI.Graphics;
-        if (hpBar) {
-          hpBar.clear();
-          const hpColor = hpPercent > 0.5 ? 0x00ff00 : hpPercent > 0.25 ? 0xffff00 : 0xff0000;
-          hpBar.beginFill(hpColor);
-          hpBar.drawRect(-19, 1, Math.max(0, 38 * hpPercent), 4);
-          hpBar.endFill();
-        }
-      }
+      updateHealthUi(mechContainer, hpPercent);
 
-      // Damage Particles (Smoke & Sparks)
-      let damageParticles = mechContainer.getChildByName('damageParticles') as PIXI.Container;
-      if (!damageParticles) {
-        damageParticles = new PIXI.Container();
-        damageParticles.name = 'damageParticles';
-        damageParticles.y = -30; // Center of mech
-        mechContainer.addChild(damageParticles);
-        
-        const particles: any[] = [];
-        let spawnTimer = 0;
-        
-        (damageParticles as any).update = (delta: number) => {
-          const severity = (damageParticles as any).severity;
-          if (severity > 0.5) return; // No particles if healthy
-          
-          spawnTimer -= delta;
-          if (spawnTimer <= 0) {
-            spawnTimer = severity < 0.25 ? 3 : 8; // Faster spawn if more damaged
-            
-            const isSpark = severity < 0.25 && Math.random() > 0.6;
-            const p = new PIXI.Graphics() as any;
-            
-            if (isSpark) {
-              p.beginFill(Math.random() > 0.5 ? 0xffaa00 : 0xff3300);
-              p.drawRect(-2, -2, 4, 4);
-              p.endFill();
-              p.vy = -Math.random() * 4 - 2;
-              p.vx = (Math.random() - 0.5) * 6;
-              p.life = 1.0;
-              p.decay = 0.04 + Math.random() * 0.04;
-              p.isSpark = true;
-            } else {
-              p.beginFill(severity < 0.25 ? 0x222222 : 0x555555, 0.7);
-              p.drawCircle(0, 0, Math.random() * 6 + 4);
-              p.endFill();
-              p.vy = -Math.random() * 2 - 1;
-              p.vx = (Math.random() - 0.5) * 2;
-              p.life = 1.0;
-              p.decay = 0.015 + Math.random() * 0.01;
-              p.scale.set(0.5);
-              p.isSpark = false;
-            }
-            
-            p.x = (Math.random() - 0.5) * 30;
-            p.y = (Math.random() - 0.5) * 30;
-            
-            damageParticles.addChild(p);
-            particles.push(p);
-          }
-          
-          for (let i = particles.length - 1; i >= 0; i--) {
-            const p = particles[i];
-            p.x += p.vx * delta;
-            p.y += p.vy * delta;
-            p.life -= p.decay * delta;
-            
-            if (p.isSpark) {
-              p.vy += 0.15 * delta; // Gravity
-              p.alpha = p.life;
-            } else {
-              p.scale.set(p.scale.x + 0.03 * delta);
-              p.alpha = p.life;
-            }
-            
-            if (p.life <= 0) {
-              damageParticles.removeChild(p);
-              p.destroy();
-              particles.splice(i, 1);
-            }
-          }
-        };
-      }
-      (damageParticles as any).severity = hpPercent;
-
-      // Apply damage tint to sprite
-      if (mechContainer.partsContainer) {
-        const sprite = mechContainer.partsContainer.getChildByName('sprite') as PIXI.Sprite;
-        if (sprite) {
-          if (hpPercent <= 0.25) sprite.tint = 0x888888;
-          else if (hpPercent <= 0.5) sprite.tint = 0xbbbbbb;
-          else sprite.tint = 0xffffff;
-        }
-      }
-
-      // Damage Flash Effect
-      const prevHp = (mechContainer as any)._prevHp;
-      if (prevHp !== undefined && mech.stats.hp < prevHp) {
-        const jumpContainer = mechContainer.getChildByName('jumpContainer') as PIXI.Container;
-        const idleContainer = jumpContainer?.getChildByName('idleContainer') as PIXI.Container;
-        const spriteContainer = idleContainer?.getChildByName('spriteContainer') as PIXI.Container;
-        
-        let targetContainer = spriteContainer;
-        if (!targetContainer && mechContainer.partsContainer) {
-            targetContainer = mechContainer.partsContainer;
-        }
-        
-        if (targetContainer) {
-          // Flash red
-          const colorMatrix = new PIXI.ColorMatrixFilter();
-          colorMatrix.tint(0xff0000, true);
-          
-          // Preserve existing filters (like transparencyFilter)
-          const existingFilters = targetContainer.filters 
-            ? (Array.isArray(targetContainer.filters) ? [...targetContainer.filters] : [targetContainer.filters]) 
-            : [];
-          targetContainer.filters = [...existingFilters, colorMatrix];
-          
-          // Shake
-          gsap.to(targetContainer, {
-            x: 5,
-            yoyo: true,
-            repeat: 5,
-            duration: 0.05,
-            onComplete: () => {
-              targetContainer.x = 0;
-              // Restore original filters and destroy the color matrix
-              targetContainer.filters = existingFilters.length > 0 ? existingFilters : null;
-              colorMatrix.destroy();
-            }
-          });
-        }
-      }
-      (mechContainer as any)._prevHp = mech.stats.hp;
+      // Damage Particles, Tint and Flash Effects
+      updateDamageEffects(mechContainer, hpPercent, mech.stats.hp);
       
       // Highlight selected mech
-      let selectionRing = mechContainer.getChildByName('selectionRing') as PIXI.Graphics;
-      let selectionArrows = mechContainer.getChildByName('selectionArrows') as PIXI.Container;
-      
-      if (selectedMech && selectedMech.id === mech.id) {
-        if (!selectionRing) {
-          selectionRing = new PIXI.Graphics();
-          selectionRing.name = 'selectionRing';
-          mechContainer.addChildAt(selectionRing, 0); // Add below everything else
-          
-          selectionArrows = new PIXI.Container();
-          selectionArrows.name = 'selectionArrows';
-          mechContainer.addChild(selectionArrows);
-          
-          // Draw 4 arrows pointing inward
-          for (let i = 0; i < 4; i++) {
-            const arrow = new PIXI.Graphics();
-            arrow.beginFill(0x00ffaa);
-            arrow.moveTo(0, -10);
-            arrow.lineTo(5, 0);
-            arrow.lineTo(-5, 0);
-            arrow.endFill();
-            arrow.y = -60;
-            arrow.rotation = (Math.PI / 2) * i;
-            
-            // Position them in a circle
-            arrow.x = Math.cos(arrow.rotation - Math.PI/2) * 40;
-            arrow.y = Math.sin(arrow.rotation - Math.PI/2) * 40 - 20;
-            
-            selectionArrows.addChild(arrow);
-          }
-
-          // Animate the ring
-          gsap.to(selectionRing, {
-            alpha: 0.3,
-            duration: 1,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut"
-          });
-          
-          // Animate arrows spinning
-          gsap.to(selectionArrows, {
-            rotation: Math.PI * 2,
-            duration: 4,
-            repeat: -1,
-            ease: "linear"
-          });
-          
-          // Animate arrows bobbing
-          gsap.to(selectionArrows.scale, {
-            x: 0.8,
-            y: 0.8,
-            duration: 0.5,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut"
-          });
-        }
-        selectionRing.clear();
-        selectionRing.lineStyle(2, 0x00ffaa, 0.8);
-        selectionRing.beginFill(0x00ffaa, 0.1);
-        selectionRing.drawEllipse(0, 15, 35, 18);
-        selectionRing.endFill();
-      } else {
-        if (selectionRing) {
-          gsap.killTweensOf(selectionRing);
-          mechContainer.removeChild(selectionRing);
-          selectionRing.destroy();
-        }
-        if (selectionArrows) {
-          gsap.killTweensOf(selectionArrows);
-          gsap.killTweensOf(selectionArrows.scale);
-          mechContainer.removeChild(selectionArrows);
-          selectionArrows.destroy({ children: true });
-        }
-      }
+      updateSelectionVisuals(mechContainer, selectedMech?.id === mech.id);
     });
   };
 
