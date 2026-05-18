@@ -3,3 +3,7 @@
 ## 2026-05-15 - ARIA Roles for Custom Keyboard Interaction
 **Learning:** When implementing custom keyboard shortcuts (like Space/Enter to advance dialogs) on non-native, overlay UI components, pairing them with the `role="dialog"` attribute and `aria-labelledby`/`aria-describedby` is crucial. It ensures the content and interactions are explicitly announced by screen readers when the component becomes visible.
 **Action:** Always add dialog-related ARIA roles and associated text IDs when constructing custom modals or dialog overlays, particularly when binding global keyboard event listeners for quick-action shortcuts.
+
+## 2026-05-18 - Screen Reader Support for Loading States
+**Learning:** Pairing visual progress bars with `role="progressbar"`, dynamic text regions with `aria-live="polite"`, and error messages with `role="alert"` is vital during long initialization sequences (like asset generation). This combination ensures screen reader users receive continuous, non-disruptive feedback about system state changes and immediate notification of critical failures.
+**Action:** When creating custom loading screens or progress indicators, always combine a semantic progress bar with an `aria-live` text region to narrate the specific operations occurring, and use `role="alert"` for any transient error boundaries that appear.
