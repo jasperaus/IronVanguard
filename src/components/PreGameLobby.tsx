@@ -34,7 +34,14 @@ export const PreGameLobby: React.FC<PreGameLobbyProps> = ({ progress, currentAss
             <span>{Math.round(progress * 100)}%</span>
           </div>
           
-          <div className="w-full h-2 bg-emerald-900/50 rounded-full overflow-hidden">
+          <div
+            className="w-full h-2 bg-emerald-900/50 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(progress * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="System Initialization Progress"
+          >
             <motion.div 
               className="h-full bg-emerald-500"
               initial={{ width: 0 }}
@@ -43,12 +50,19 @@ export const PreGameLobby: React.FC<PreGameLobbyProps> = ({ progress, currentAss
             />
           </div>
 
-          <div className="text-xs uppercase tracking-widest text-emerald-500/50 h-4">
+          <div
+            className="text-xs uppercase tracking-widest text-emerald-500/50 h-4"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {isLoaded ? '> All systems go.' : (currentAsset ? `> Loading asset: ${currentAsset}...` : '> Establishing orbital link...')}
           </div>
           
           {error && (
-            <div className="text-xs text-amber-500 bg-amber-900/20 border border-amber-500/30 p-3 rounded-sm mt-4">
+            <div
+              className="text-xs text-amber-500 bg-amber-900/20 border border-amber-500/30 p-3 rounded-sm mt-4"
+              role="alert"
+            >
               WARNING: {error}
             </div>
           )}
