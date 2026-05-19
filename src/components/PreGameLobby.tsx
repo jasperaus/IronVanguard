@@ -56,9 +56,7 @@ export const PreGameLobby: React.FC<PreGameLobbyProps> = ({ progress, currentAss
           {isLoaded && error && (
             <button 
               onClick={onReady}
-              aria-label="Deploy with Fallback Systems"
-              title="Deploy with Fallback Systems"
-              className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded-sm transition-all uppercase tracking-widest mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded-sm transition-all uppercase tracking-widest mt-4 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none"
             >
               Deploy with Fallback Systems
             </button>

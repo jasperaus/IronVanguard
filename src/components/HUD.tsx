@@ -54,17 +54,13 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
                   window.dispatchEvent(new CustomEvent('reset-game'));
                   setIsConfirmingReset(false);
                 }}
-                aria-label="Confirm Reset"
-                title="Confirm Reset"
-                className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-600 hover:bg-red-500 text-black border border-red-500/30 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-600 hover:bg-red-500 text-black border border-red-500/30 text-xs focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none"
               >
                 Confirm Reset
               </button>
               <button 
                 onClick={() => setIsConfirmingReset(false)}
-                aria-label="Cancel Reset"
-                title="Cancel Reset"
-                className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-500/30 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-500/30 text-xs focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none"
               >
                 Cancel
               </button>
@@ -72,9 +68,7 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
           ) : (
             <button 
               onClick={() => setIsConfirmingReset(true)}
-              aria-label="Reset Simulation"
-              title="Reset Simulation"
-              className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/30 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+              className="font-mono font-bold px-4 py-2 rounded-sm transition-colors uppercase tracking-widest bg-red-900/50 hover:bg-red-800 text-red-200 border border-red-500/30 text-xs focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none"
             >
               Reset Sim
             </button>
@@ -82,9 +76,9 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
           <button 
             onClick={onEndTurn}
             disabled={!isMyTurn}
-            aria-label={isMyTurn ? "End your turn" : "Wait for enemy turn"}
-            title={isMyTurn ? "End your turn" : "Wait for enemy turn"}
-            className={`font-mono font-bold px-6 py-2 rounded-sm transition-colors uppercase tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
+            title={!isMyTurn ? "Waiting for enemy turn" : "End your turn"}
+            aria-label={!isMyTurn ? "End turn disabled, waiting for enemy" : "End turn"}
+            className={`font-mono font-bold px-6 py-2 rounded-sm transition-colors uppercase tracking-widest focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none ${
               isMyTurn 
                 ? 'bg-emerald-600 hover:bg-emerald-500 text-black' 
                 : 'bg-emerald-900/50 text-emerald-500/50 cursor-not-allowed'

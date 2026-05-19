@@ -271,14 +271,14 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       // Add Environmental Lighting
       const ambientLight = new PIXI.Graphics();
-      ambientLight.beginFill(0x051020, 0.6); // Deep, moody holographic blue
+      ambientLight.beginFill(0x0a1a2a, 0.4); // Atmospheric blue tint
       ambientLight.drawRect(-1500, -1500, 3000, 3000);
       ambientLight.endFill();
       ambientLight.blendMode = 'multiply';
       lightingLayer.addChild(ambientLight);
 
       const sunLight = new PIXI.Graphics();
-      sunLight.beginFill(0x44aaff, 0.2); // Cool cyan spotlight from above
+      sunLight.beginFill(0xffaa55, 0.15); // Warm sunlight
       sunLight.drawCircle(500, -500, 1200);
       sunLight.endFill();
       sunLight.blendMode = 'add';
@@ -414,16 +414,11 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     
     const graphics = new PIXI.Graphics();
     
-    // Performance optimization: Pre-calculate enemy positions before the hex loop
-    // This turns an O(N) lookup inside an O(H) loop into O(1)
-    const enemyPositions = new Set<string>();
-    if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasAttacked) {
-      for (const m of gameState.mechs) {
-        if (m.ownerId !== user?.uid && !m.isDestroyed) {
-          enemyPositions.add(`${m.position.q},${m.position.r}`);
-        }
-      }
-    }
+    const enemyPositions = new Set(
+      gameState?.mechs
+        .filter(m => m.ownerId !== user?.uid && !m.isDestroyed)
+        .map(m => `${m.position.q},${m.position.r}`) || []
+    );
 
     for (let q = -8; q <= 8; q++) {
       for (let r = -8; r <= 8; r++) {
@@ -433,25 +428,25 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         const dist = (Math.abs(q) + Math.abs(q + r) + Math.abs(r)) / 2;
         if (dist > 8) continue;
 
-        let fillColor = 0x001122; // Very dark blue base
-        let lineAlpha = 0.2; // Brighter holographic lines
-        let lineColor = 0x1188aa; // Cyan/blue holographic grid lines
+        let fillColor = 0x000000;
+        let lineAlpha = 0.08; // More subtle lines
+        let lineColor = 0x88aa99; // Slightly brighter, but lower alpha
         let fillAlpha = 0;
 
         // Highlight logic
         if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasMoved) {
           const distToSelected = hexDistance(selectedMech.position, { q, r });
           if (distToSelected <= selectedMech.stats.movement) {
-            fillColor = 0x1155aa; // Move range - holographic blue
-            fillAlpha = 0.2;
-            lineColor = 0x44aaff;
-            lineAlpha = 0.6;
+            fillColor = 0x22aa55; // Move range
+            fillAlpha = 0.15;
+            lineColor = 0x44ff88;
+            lineAlpha = 0.4;
           }
         }
         if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasAttacked) {
            const distToSelected = hexDistance(selectedMech.position, { q, r });
            if (distToSelected <= selectedMech.stats.range && distToSelected > 0) {
-             // If there's an enemy here, highlight red
+             // If there's an enemy here, highlight red using O(1) Set lookup
              const enemyHere = enemyPositions.has(`${q},${r}`);
              if (enemyHere) {
                fillColor = 0xff3333;
@@ -529,14 +524,17 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     }
 
     // Sort mechs by Y position for proper isometric depth sorting (painter's algorithm)
-    const sortedMechs = [...state.mechs].filter(m => !m.isDestroyed).sort((a, b) => {
-      const posA = hexToPixel(a.position.q, a.position.r, HEX_SIZE);
-      const posB = hexToPixel(b.position.q, b.position.r, HEX_SIZE);
-      return posA.y - posB.y;
-    });
+    // Pre-compute positions to avoid expensive O(N log N) hexToPixel calls during sort
+    // and reuse them in the following loop to further improve performance.
+    const mechsWithPos = state.mechs
+      .filter(m => !m.isDestroyed)
+      .map(m => ({
+        mech: m,
+        pos: hexToPixel(m.position.q, m.position.r, HEX_SIZE)
+      }))
+      .sort((a, b) => a.pos.y - b.pos.y);
 
-    sortedMechs.forEach((mech, index) => {
-      const { x, y } = hexToPixel(mech.position.q, mech.position.r, HEX_SIZE);
+    mechsWithPos.forEach(({ mech, pos: { x, y } }, index) => {
       let mechContainer = mechSpritesRef.current[mech.id];
 
       if (!mechContainer) {
@@ -611,6 +609,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         coreBlur.blur = 6;
         coreShadow.filters = [coreBlur];
         shadowContainer.addChild(coreShadow);
+
 
         // Holographic base ring under the mech
         const holoRingContainer = new PIXI.Container();

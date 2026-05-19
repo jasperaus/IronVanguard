@@ -43,9 +43,7 @@ export const Dialogue: React.FC<DialogueProps> = ({ speaker, text, onNext, isVis
             </div>
             <button 
               onClick={onNext}
-              aria-label="Continue Dialogue"
-              title="Continue Dialogue"
-              className="mt-4 text-emerald-500 font-mono text-xs uppercase tracking-widest hover:text-emerald-400 flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-sm px-2 py-1 -ml-2"
+              className="mt-4 text-emerald-500 font-mono text-xs uppercase tracking-widest hover:text-emerald-400 flex items-center gap-2"
             >
               <span>Continue</span>
               <span className="animate-pulse">_</span>

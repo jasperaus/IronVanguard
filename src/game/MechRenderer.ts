@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { MechInstance } from './types';
+import { MechInstance, MechType } from './types';
 
 export interface MechSpriteContainer extends PIXI.Container {
   updateRotation: (angle: number) => void;
