@@ -1,6 +1,7 @@
 import { createMech } from './Mech';
 import { applyDamage, calculateDamage } from './Combat';
 import { hexDistance } from './hexUtils';
+import { getReachableTerrainHexes, getTerrainProfile, toHexKey } from './terrain';
 import { GameState, MechInstance, MechType } from './types';
 
 export const LOCAL_PLAYER_ID = 'local_player';
@@ -36,12 +37,14 @@ export function createLocalSkirmishGame(): GameState {
 export function moveLocalMech(state: GameState, mechId: string, q: number, r: number): GameState {
   const mech = state.mechs.find((m) => m.id === mechId);
   if (!mech || mech.isDestroyed || mech.hasMoved || mech.ownerId !== state.activePlayerId) return state;
-  if (hexDistance(mech.position, { q, r }) > mech.stats.movement) return state;
 
-  const isOccupied = state.mechs.some(
-    (m) => !m.isDestroyed && m.id !== mechId && m.position.q === q && m.position.r === r
+  const blockedHexes = new Set(
+    state.mechs
+      .filter((m) => !m.isDestroyed && m.id !== mechId)
+      .map((m) => toHexKey(m.position))
   );
-  if (isOccupied) return state;
+  const reachableHexes = getReachableTerrainHexes(mech.position, mech.stats.movement, blockedHexes);
+  if (!reachableHexes.has(toHexKey({ q, r }))) return state;
 
   return {
     ...state,
@@ -60,7 +63,8 @@ export function attackLocalMech(state: GameState, attackerId: string, defenderId
   if (attacker.ownerId !== state.activePlayerId || attacker.ownerId === defender.ownerId || attacker.hasAttacked) return state;
   if (hexDistance(attacker.position, defender.position) > attacker.stats.range) return state;
 
-  const damage = calculateDamage(attacker, defender);
+  const defenderTerrain = getTerrainProfile(defender.position.q, defender.position.r);
+  const damage = Math.max(0, calculateDamage(attacker, defender) - defenderTerrain.defenseBonus * 4);
   const damagedDefender = applyDamage(defender, damage);
   const mechs = state.mechs.map((m) => {
     if (m.id === defenderId) return damagedDefender;
@@ -145,33 +149,18 @@ function chooseStepTowardTarget(
   const occupiedHexes = new Set(
     state.mechs
       .filter((m) => !m.isDestroyed && m.id !== mech.id)
-      .map((m) => `${m.position.q},${m.position.r}`)
+      .map((m) => toHexKey(m.position))
   );
-  let currentPos = mech.position;
-  let movesLeft = mech.stats.movement;
-  let moved = false;
+  const reachableHexes = [...getReachableTerrainHexes(mech.position, mech.stats.movement, occupiedHexes).keys()]
+    .map((key) => {
+      const [q, r] = key.split(',').map(Number);
+      return { q, r };
+    })
+    .filter((hex) => hex.q !== mech.position.q || hex.r !== mech.position.r);
 
-  while (movesLeft > 0) {
-    const neighbors = [
-      { q: currentPos.q + 1, r: currentPos.r },
-      { q: currentPos.q + 1, r: currentPos.r - 1 },
-      { q: currentPos.q, r: currentPos.r - 1 },
-      { q: currentPos.q - 1, r: currentPos.r },
-      { q: currentPos.q - 1, r: currentPos.r + 1 },
-      { q: currentPos.q, r: currentPos.r + 1 },
-    ];
-
-    const bestHex = neighbors
-      .filter((hex) => !occupiedHexes.has(`${hex.q},${hex.r}`))
-      .sort((a, b) => hexDistance(a, target.position) - hexDistance(b, target.position))[0];
-
-    if (!bestHex || hexDistance(bestHex, target.position) >= hexDistance(currentPos, target.position)) break;
-    currentPos = bestHex;
-    moved = true;
-    movesLeft -= 1;
-  }
-
-  return moved ? currentPos : undefined;
+  return reachableHexes.sort((a, b) => (
+    hexDistance(a, target.position) - hexDistance(b, target.position)
+  ))[0];
 }
 
 function getWinnerId(mechs: MechInstance[]): string | undefined {

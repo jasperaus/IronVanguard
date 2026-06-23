@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { getTerrainProfile } from './terrain';
+import { getReachableTerrainHexes, getTerrainProfile, toHexKey } from './terrain';
 
 describe('terrain profiles', () => {
   test('are deterministic for the same hex', () => {
@@ -16,5 +16,13 @@ describe('terrain profiles', () => {
         assert.ok(['plains', 'forest', 'water', 'mountain'].includes(terrain.terrain));
       }
     }
+  });
+
+  test('calculates reachable hexes using terrain movement costs', () => {
+    const reachable = getReachableTerrainHexes({ q: -5, r: 1 }, 2);
+
+    assert.ok(reachable.has(toHexKey({ q: -5, r: 1 })));
+    assert.ok(reachable.has(toHexKey({ q: -4, r: 1 })));
+    assert.ok(!reachable.has(toHexKey({ q: -3, r: 2 })));
   });
 });

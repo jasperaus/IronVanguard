@@ -1,4 +1,5 @@
 import { HexCell } from './types';
+import { Axial, getHexNeighbors, hexDistance } from './hexUtils';
 
 export interface TerrainProfile extends HexCell {
   color: number;
@@ -66,6 +67,43 @@ export function getTerrainProfile(q: number, r: number): TerrainProfile {
     defenseBonus: 0,
     label: 'Plain',
   };
+}
+
+export function getReachableTerrainHexes(
+  start: Axial,
+  movement: number,
+  blockedHexes = new Set<string>(),
+  boardRadius = 8
+): Map<string, number> {
+  const costs = new Map<string, number>();
+  const frontier: { hex: Axial; cost: number }[] = [{ hex: start, cost: 0 }];
+  costs.set(toHexKey(start), 0);
+
+  while (frontier.length > 0) {
+    frontier.sort((a, b) => a.cost - b.cost);
+    const current = frontier.shift();
+    if (!current) break;
+
+    for (const neighbor of getHexNeighbors(current.hex)) {
+      const key = toHexKey(neighbor);
+      if (blockedHexes.has(key) || hexDistance({ q: 0, r: 0 }, neighbor) > boardRadius) continue;
+
+      const nextCost = current.cost + getTerrainProfile(neighbor.q, neighbor.r).movementCost;
+      if (nextCost > movement) continue;
+
+      const previousCost = costs.get(key);
+      if (previousCost === undefined || nextCost < previousCost) {
+        costs.set(key, nextCost);
+        frontier.push({ hex: neighbor, cost: nextCost });
+      }
+    }
+  }
+
+  return costs;
+}
+
+export function toHexKey(hex: Axial): string {
+  return `${hex.q},${hex.r}`;
 }
 
 function getElevation(q: number, r: number): number {

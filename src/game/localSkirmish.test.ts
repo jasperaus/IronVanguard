@@ -33,6 +33,16 @@ describe('local skirmish', () => {
     assert.deepStrictEqual(illegal.mechs.find((m) => m.id === light.id)?.position, light.position);
   });
 
+  test('blocks moves that are too expensive for the terrain path', () => {
+    const state = createLocalSkirmishGame();
+    const heavy = state.mechs.find((m) => m.id === `${LOCAL_PLAYER_ID}_heavy`);
+    assert.ok(heavy);
+
+    const illegal = moveLocalMech(state, heavy.id, -3, 2);
+
+    assert.deepStrictEqual(illegal.mechs.find((m) => m.id === heavy.id)?.position, heavy.position);
+  });
+
   test('attacks armor before structure in local mode', () => {
     let state = createLocalSkirmishGame();
     const attacker = state.mechs.find((m) => m.id === `${LOCAL_PLAYER_ID}_medium`);
@@ -54,6 +64,29 @@ describe('local skirmish', () => {
     assert.ok(damagedDefender);
     assert.ok(damagedDefender.stats.armor < defender.stats.armor);
     assert.strictEqual(damagedDefender.stats.hp, defender.stats.hp);
+  });
+
+  test('reduces incoming damage on defensive terrain', () => {
+    let state = createLocalSkirmishGame();
+    const attacker = state.mechs.find((m) => m.id === `${LOCAL_PLAYER_ID}_medium`);
+    const defender = state.mechs.find((m) => m.id === `${LOCAL_AI_ID}_heavy`);
+    assert.ok(attacker);
+    assert.ok(defender);
+
+    state = {
+      ...state,
+      mechs: state.mechs.map((m) => {
+        if (m.id === attacker.id) return { ...m, position: { q: 0, r: -1 } };
+        if (m.id === defender.id) return { ...m, position: { q: 0, r: 0 } };
+        return m;
+      }),
+    };
+
+    const damaged = attackLocalMech(state, attacker.id, defender.id)
+      .mechs.find((m) => m.id === defender.id);
+
+    assert.ok(damaged);
+    assert.strictEqual(damaged.stats.armor, 88);
   });
 
   test('runs an AI turn and returns control to the player', () => {

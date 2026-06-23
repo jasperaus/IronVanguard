@@ -5,7 +5,7 @@ import { GameState, MechInstance } from '../game/types';
 import { hexToPixel, hexDistance, pixelToHex } from '../game/hexUtils';
 import { User } from 'firebase/auth';
 import { createProceduralMech, MechSpriteContainer } from '../game/MechRenderer';
-import { getTerrainProfile } from '../game/terrain';
+import { getReachableTerrainHexes, getTerrainProfile, toHexKey } from '../game/terrain';
 
 export interface PixiAppRef {
   playAttackAnimation: (attacker: {q: number, r: number}, target: {q: number, r: number}) => void;
@@ -440,12 +440,21 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     // Performance optimization: Pre-calculate enemy positions before the hex loop
     // This turns an O(N) lookup inside an O(H) loop into O(1)
     const enemyPositions = new Set<string>();
+    let reachableMoveHexes = new Map<string, number>();
     if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasAttacked) {
       for (const m of gameState.mechs) {
         if (m.ownerId !== user?.uid && !m.isDestroyed) {
           enemyPositions.add(`${m.position.q},${m.position.r}`);
         }
       }
+    }
+    if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasMoved) {
+      const blockedHexes = new Set<string>(
+        gameState.mechs
+          .filter(m => !m.isDestroyed && m.id !== selectedMech.id)
+          .map(m => toHexKey(m.position))
+      );
+      reachableMoveHexes = getReachableTerrainHexes(selectedMech.position, selectedMech.stats.movement, blockedHexes);
     }
 
     for (let q = -8; q <= 8; q++) {
@@ -465,8 +474,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
         // Highlight logic
         if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasMoved) {
-          const distToSelected = hexDistance(selectedMech.position, { q, r });
-          if (distToSelected <= selectedMech.stats.movement) {
+          if (reachableMoveHexes.has(toHexKey({ q, r }))) {
             fillColor = 0x1155aa; // Move range - holographic blue
             fillAlpha = 0.54;
             lineColor = 0x44aaff;
