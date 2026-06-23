@@ -6,6 +6,7 @@ import { GameState, MechInstance, MechType } from './types';
 
 export const LOCAL_PLAYER_ID = 'local_player';
 export const LOCAL_AI_ID = 'ai_1';
+export const HEAT_STRESS_THRESHOLD = 70;
 
 const startPositions = [
   { q: -6, r: 0 }, { q: -5, r: -1 }, { q: -5, r: 1 },
@@ -37,13 +38,15 @@ export function createLocalSkirmishGame(): GameState {
 export function moveLocalMech(state: GameState, mechId: string, q: number, r: number): GameState {
   const mech = state.mechs.find((m) => m.id === mechId);
   if (!mech || mech.isDestroyed || mech.hasMoved || mech.ownerId !== state.activePlayerId) return state;
+  const effectiveMovement = getEffectiveMovement(mech);
+  if (effectiveMovement <= 0) return state;
 
   const blockedHexes = new Set(
     state.mechs
       .filter((m) => !m.isDestroyed && m.id !== mechId)
       .map((m) => toHexKey(m.position))
   );
-  const reachableHexes = getReachableTerrainHexes(mech.position, mech.stats.movement, blockedHexes);
+  const reachableHexes = getReachableTerrainHexes(mech.position, effectiveMovement, blockedHexes);
   if (!reachableHexes.has(toHexKey({ q, r }))) return state;
 
   return {
@@ -61,6 +64,7 @@ export function attackLocalMech(state: GameState, attackerId: string, defenderId
   const defender = state.mechs.find((m) => m.id === defenderId);
   if (!attacker || !defender || attacker.isDestroyed || defender.isDestroyed) return state;
   if (attacker.ownerId !== state.activePlayerId || attacker.ownerId === defender.ownerId || attacker.hasAttacked) return state;
+  if (isHeatLocked(attacker)) return state;
   if (hexDistance(attacker.position, defender.position) > attacker.stats.range) return state;
 
   const defenderTerrain = getTerrainProfile(defender.position.q, defender.position.r);
@@ -72,7 +76,7 @@ export function attackLocalMech(state: GameState, attackerId: string, defenderId
       return {
         ...m,
         hasAttacked: true,
-        stats: { ...m.stats, heat: Math.min(m.stats.maxHeat, m.stats.heat + 18) },
+        stats: { ...m.stats, heat: Math.min(m.stats.maxHeat, m.stats.heat + getAttackHeat(m)) },
       };
     }
     return m;
@@ -135,6 +139,24 @@ export function runLocalAiTurn(state: GameState): GameState {
   return endLocalTurn(nextState);
 }
 
+export function isHeatLocked(mech: MechInstance): boolean {
+  return mech.stats.heat >= mech.stats.maxHeat;
+}
+
+export function getEffectiveMovement(mech: MechInstance): number {
+  if (isHeatLocked(mech)) return 0;
+  if (mech.stats.heat >= HEAT_STRESS_THRESHOLD) {
+    return Math.max(1, Math.floor(mech.stats.movement / 2));
+  }
+  return mech.stats.movement;
+}
+
+export function getAttackHeat(mech: MechInstance): number {
+  if (mech.type === 'heavy') return 26;
+  if (mech.type === 'medium') return 20;
+  return 14;
+}
+
 function findNearestEnemy(state: GameState, mech: MechInstance): MechInstance | undefined {
   return state.mechs
     .filter((m) => m.ownerId !== mech.ownerId && !m.isDestroyed)
@@ -151,7 +173,7 @@ function chooseStepTowardTarget(
       .filter((m) => !m.isDestroyed && m.id !== mech.id)
       .map((m) => toHexKey(m.position))
   );
-  const reachableHexes = [...getReachableTerrainHexes(mech.position, mech.stats.movement, occupiedHexes).keys()]
+  const reachableHexes = [...getReachableTerrainHexes(mech.position, getEffectiveMovement(mech), occupiedHexes).keys()]
     .map((key) => {
       const [q, r] = key.split(',').map(Number);
       return { q, r };

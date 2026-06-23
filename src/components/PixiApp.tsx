@@ -6,6 +6,7 @@ import { hexToPixel, hexDistance, pixelToHex } from '../game/hexUtils';
 import { User } from 'firebase/auth';
 import { createProceduralMech, MechSpriteContainer } from '../game/MechRenderer';
 import { getReachableTerrainHexes, getTerrainProfile, toHexKey } from '../game/terrain';
+import { getEffectiveMovement } from '../game/localSkirmish';
 
 export interface PixiAppRef {
   playAttackAnimation: (attacker: {q: number, r: number}, target: {q: number, r: number}) => void;
@@ -89,11 +90,13 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
       
       const start = hexToPixel(attackerPos.q, attackerPos.r, HEX_SIZE);
       const end = hexToPixel(targetPos.q, targetPos.r, HEX_SIZE);
+      const startY = start.y - 46;
+      const endY = end.y - 46;
       
       const laser = new PIXI.Graphics();
       laser.lineStyle(4, 0xff3300, 1);
-      laser.moveTo(start.x, start.y - 40); // Shoot from slightly above base
-      laser.lineTo(end.x, end.y - 40);
+      laser.moveTo(start.x, startY); // Shoot from slightly above base
+      laser.lineTo(end.x, endY);
       
       // Add glow
       const glowFilter = new PIXI.BlurFilter();
@@ -101,16 +104,82 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
       
       const laserGlow = new PIXI.Graphics();
       laserGlow.lineStyle(12, 0xff0000, 0.5);
-      laserGlow.moveTo(start.x, start.y - 40);
-      laserGlow.lineTo(end.x, end.y - 40);
+      laserGlow.moveTo(start.x, startY);
+      laserGlow.lineTo(end.x, endY);
       laserGlow.filters = [glowFilter];
+
+      const projectile = new PIXI.Graphics();
+      projectile.beginFill(0xfff2a0, 1);
+      projectile.drawCircle(0, 0, 7);
+      projectile.endFill();
+      projectile.beginFill(0xff3300, 0.7);
+      projectile.drawCircle(0, 0, 14);
+      projectile.endFill();
+      projectile.x = start.x;
+      projectile.y = startY;
+
+      const muzzleFlash = new PIXI.Graphics();
+      muzzleFlash.beginFill(0xfff2a0, 0.9);
+      muzzleFlash.drawCircle(start.x, startY, 22);
+      muzzleFlash.endFill();
+
+      const impactRing = new PIXI.Graphics();
+      impactRing.lineStyle(3, 0xffaa55, 0.85);
+      impactRing.drawCircle(end.x, endY, 8);
+      impactRing.alpha = 0;
       
+      effectsLayerRef.current.addChild(muzzleFlash);
       effectsLayerRef.current.addChild(laserGlow);
       effectsLayerRef.current.addChild(laser);
+      effectsLayerRef.current.addChild(projectile);
+      effectsLayerRef.current.addChild(impactRing);
+
+      if (appRef.current) {
+        const stage = appRef.current.stage;
+        const originalX = stage.x;
+        gsap.to(stage, {
+          x: originalX + 4,
+          duration: 0.035,
+          repeat: 3,
+          yoyo: true,
+          ease: "power1.inOut",
+          onComplete: () => {
+            stage.x = originalX;
+          }
+        });
+      }
       
+      gsap.to(muzzleFlash, {
+        alpha: 0,
+        scaleX: 1.8,
+        scaleY: 1.8,
+        duration: 0.16,
+        ease: "power2.out",
+        onComplete: () => muzzleFlash.destroy()
+      });
+
+      gsap.to(projectile, {
+        x: end.x,
+        y: endY,
+        duration: 0.22,
+        ease: "power1.in",
+        onComplete: () => {
+          projectile.destroy();
+          impactRing.alpha = 1;
+          gsap.to(impactRing, {
+            alpha: 0,
+            scaleX: 3,
+            scaleY: 3,
+            duration: 0.24,
+            ease: "power2.out",
+            onComplete: () => impactRing.destroy()
+          });
+        }
+      });
+
       gsap.to([laser, laserGlow], {
         alpha: 0,
-        duration: 0.3,
+        duration: 0.35,
         ease: "power2.out",
         onComplete: () => {
           laser.destroy();
@@ -454,7 +523,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
           .filter(m => !m.isDestroyed && m.id !== selectedMech.id)
           .map(m => toHexKey(m.position))
       );
-      reachableMoveHexes = getReachableTerrainHexes(selectedMech.position, selectedMech.stats.movement, blockedHexes);
+      reachableMoveHexes = getReachableTerrainHexes(selectedMech.position, getEffectiveMovement(selectedMech), blockedHexes);
     }
 
     for (let q = -8; q <= 8; q++) {

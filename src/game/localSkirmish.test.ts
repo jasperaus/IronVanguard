@@ -6,6 +6,7 @@ import {
   attackLocalMech,
   createLocalSkirmishGame,
   endLocalTurn,
+  getEffectiveMovement,
   moveLocalMech,
   runLocalAiTurn,
 } from './localSkirmish';
@@ -87,6 +88,35 @@ describe('local skirmish', () => {
 
     assert.ok(damaged);
     assert.strictEqual(damaged.stats.armor, 88);
+  });
+
+  test('heat stress reduces movement and full heat locks actions', () => {
+    let state = createLocalSkirmishGame();
+    const light = state.mechs.find((m) => m.id === `${LOCAL_PLAYER_ID}_light`);
+    const target = state.mechs.find((m) => m.id === `${LOCAL_AI_ID}_light`);
+    assert.ok(light);
+    assert.ok(target);
+
+    const hotLight = { ...light, stats: { ...light.stats, heat: 72 } };
+    assert.strictEqual(getEffectiveMovement(hotLight), 3);
+
+    state = {
+      ...state,
+      mechs: state.mechs.map((m) => {
+        if (m.id === light.id) return { ...m, position: { q: 0, r: 0 }, stats: { ...m.stats, heat: 100 } };
+        if (m.id === target.id) return { ...m, position: { q: 0, r: 1 } };
+        return m;
+      }),
+    };
+
+    assert.deepStrictEqual(
+      moveLocalMech(state, light.id, 1, 0).mechs.find((m) => m.id === light.id)?.position,
+      { q: 0, r: 0 }
+    );
+    assert.strictEqual(
+      attackLocalMech(state, light.id, target.id).mechs.find((m) => m.id === target.id)?.stats.armor,
+      target.stats.armor
+    );
   });
 
   test('runs an AI turn and returns control to the player', () => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { GameState, MechInstance } from '../game/types';
+import { getEffectiveMovement, isHeatLocked } from '../game/localSkirmish';
 
 interface HUDProps {
   gameState: GameState;
@@ -12,6 +13,9 @@ interface HUDProps {
 
 export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, isMyTurn, assets }) => {
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const effectiveMovement = selectedMech ? getEffectiveMovement(selectedMech) : 0;
+  const heatPercent = selectedMech ? selectedMech.stats.heat / selectedMech.stats.maxHeat : 0;
+  const heatLocked = selectedMech ? isHeatLocked(selectedMech) : false;
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-10">
@@ -141,12 +145,34 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
                     className="h-full bg-emerald-400"
                   />
                 </div>
+
+                <div className="flex justify-between text-xs font-mono text-emerald-500/70 uppercase">
+                  <span>Reactor Heat</span>
+                  <span>{selectedMech.stats.heat}/{selectedMech.stats.maxHeat}</span>
+                </div>
+                <div className="h-2 bg-emerald-900/30 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, heatPercent * 100)}%` }}
+                    className={`h-full ${heatLocked ? 'bg-red-500' : heatPercent >= 0.7 ? 'bg-amber-400' : 'bg-cyan-400'}`}
+                  />
+                </div>
+                {heatLocked && (
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-red-400">
+                    Reactor overheated: weapons locked until cooled
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-2 gap-2 text-xs font-mono text-emerald-500 uppercase">
                 <div className="bg-emerald-900/20 p-2 border border-emerald-500/20">
                   <div className="opacity-50">Move</div>
-                  <div className="text-lg">{selectedMech.stats.movement}</div>
+                  <div className="text-lg">
+                    {effectiveMovement}
+                    {effectiveMovement !== selectedMech.stats.movement && (
+                      <span className="text-[10px] opacity-50">/{selectedMech.stats.movement}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="bg-emerald-900/20 p-2 border border-emerald-500/20">
                   <div className="opacity-50">Range</div>
@@ -158,7 +184,9 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
                 </div>
                 <div className="bg-emerald-900/20 p-2 border border-emerald-500/20">
                   <div className="opacity-50">Heat</div>
-                  <div className="text-lg">{selectedMech.stats.heat}%</div>
+                  <div className={`text-lg ${heatLocked ? 'text-red-400' : heatPercent >= 0.7 ? 'text-amber-300' : ''}`}>
+                    {selectedMech.stats.heat}%
+                  </div>
                 </div>
               </div>
             </div>
