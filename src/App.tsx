@@ -6,11 +6,25 @@ import { Dialogue } from './components/Dialogue';
 import { PreGameLobby } from './components/PreGameLobby';
 import { initializeGame, endTurn } from './game/GameEngine';
 import { GameState, MechInstance } from './game/types';
+import {
+  LOCAL_AI_ID,
+  LOCAL_PLAYER_ID,
+  attackLocalMech,
+  createLocalSkirmishGame,
+  endLocalTurn,
+  moveLocalMech,
+  runLocalAiTurn,
+} from './game/localSkirmish';
 import { generateAllAssets } from './services/assetGenerator';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
 import { onSnapshot, doc, collection, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { hexDistance } from './game/hexUtils';
+
+const LOCAL_USER = {
+  uid: LOCAL_PLAYER_ID,
+  displayName: 'Local Pilot',
+} as User;
 
 declare global {
   interface Window {
@@ -33,6 +47,8 @@ export default function App() {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [currentAssetLoading, setCurrentAssetLoading] = useState('');
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [isLocalMode, setIsLocalMode] = useState(false);
+  const activeUser = isLocalMode ? LOCAL_USER : user;
   
   const pixiAppRef = useRef<PixiAppRef>(null);
 
@@ -66,6 +82,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isLocalMode) {
+      setAssets({});
+      setGenerationError(null);
+      setLoadingProgress(1);
+      setCurrentAssetLoading('procedural battlefield');
+      setIsLoading(false);
+      return;
+    }
+
     if (!isAuthReady || !user) return;
 
     const start = async () => {
@@ -90,7 +115,15 @@ export default function App() {
       }
     };
     start();
-  }, [isAuthReady, user]);
+  }, [isAuthReady, user, isLocalMode]);
+
+  useEffect(() => {
+    if (!isLocalMode) return;
+    setGameState(createLocalSkirmishGame());
+    setSelectedMech(undefined);
+    setDialogueIndex(0);
+    setIsDialogueVisible(true);
+  }, [isLocalMode]);
 
   const handleReady = () => {
     setIsLoading(false);
@@ -99,8 +132,17 @@ export default function App() {
   // AI Turn Logic
   useEffect(() => {
     if (!gameState || gameState.status === 'finished') return;
+
+    if (isLocalMode && gameState.activePlayerId === LOCAL_AI_ID) {
+      const timeout = window.setTimeout(() => {
+        setGameState((current) => current ? runLocalAiTurn(current) : current);
+        setSelectedMech(undefined);
+      }, 900);
+
+      return () => window.clearTimeout(timeout);
+    }
     
-    if (gameState.activePlayerId === 'ai_1') {
+    if (!isLocalMode && gameState.activePlayerId === 'ai_1') {
       const runAITurn = async () => {
         // Simple delay for realism
         await new Promise(resolve => setTimeout(resolve, 1500));
@@ -244,6 +286,7 @@ export default function App() {
   }, [gameState?.activePlayerId, gameState?.turn]);
   // Real-time game syncing
   useEffect(() => {
+    if (isLocalMode) return;
     if (!user || !isAuthReady) return;
     const gameId = `game_${user.uid}`;
     
@@ -298,16 +341,55 @@ export default function App() {
     }
   };
 
+  const handleLocalSkirmish = () => {
+    setIsLocalMode(true);
+  };
+
   const handleHexClick = async (q: number, r: number) => {
-    if (!gameState || !user || gameState.status === 'finished') return;
-    if (gameState.activePlayerId !== user.uid) return; // Not your turn
+    if (!gameState || !activeUser || gameState.status === 'finished') return;
+    if (gameState.activePlayerId !== activeUser.uid) return; // Not your turn
     
     const mechAtPos = gameState.mechs.find(m => m.position.q === q && m.position.r === r && !m.isDestroyed);
+
+    if (isLocalMode) {
+      if (mechAtPos) {
+        if (selectedMech && selectedMech.id === mechAtPos.id) {
+          setSelectedMech(undefined);
+        } else if (selectedMech && selectedMech.ownerId === activeUser.uid && mechAtPos.ownerId !== activeUser.uid && !selectedMech.hasAttacked) {
+          const dist = hexDistance(selectedMech.position, mechAtPos.position);
+          if (dist <= selectedMech.stats.range) {
+            pixiAppRef.current?.playAttackAnimation(selectedMech.position, mechAtPos.position);
+            const nextState = attackLocalMech(gameState, selectedMech.id, mechAtPos.id);
+            const updatedTarget = nextState.mechs.find(m => m.id === mechAtPos.id);
+            if (updatedTarget?.isDestroyed) {
+              pixiAppRef.current?.playExplosionAnimation(mechAtPos.position);
+            }
+            setGameState(nextState);
+            setSelectedMech(nextState.mechs.find(m => m.id === selectedMech.id));
+          }
+        } else {
+          setSelectedMech(mechAtPos);
+        }
+      } else if (selectedMech && !selectedMech.hasMoved && selectedMech.ownerId === activeUser.uid) {
+        const dist = hexDistance(selectedMech.position, { q, r });
+        if (dist <= selectedMech.stats.movement) {
+          const nextState = moveLocalMech(gameState, selectedMech.id, q, r);
+          const updatedMech = nextState.mechs.find(m => m.id === selectedMech.id);
+          if (updatedMech && (updatedMech.position.q !== selectedMech.position.q || updatedMech.position.r !== selectedMech.position.r)) {
+            pixiAppRef.current?.playDustAnimation(selectedMech.position);
+            setTimeout(() => pixiAppRef.current?.playDustAnimation({ q, r }), 600);
+            setGameState(nextState);
+            setSelectedMech(updatedMech);
+          }
+        }
+      }
+      return;
+    }
     
     if (mechAtPos) {
       if (selectedMech && selectedMech.id === mechAtPos.id) {
         setSelectedMech(undefined);
-      } else if (selectedMech && selectedMech.ownerId === user.uid && mechAtPos.ownerId !== user.uid && !selectedMech.hasAttacked) {
+      } else if (selectedMech && selectedMech.ownerId === activeUser.uid && mechAtPos.ownerId !== activeUser.uid && !selectedMech.hasAttacked) {
         // Attack logic
         const dist = hexDistance(selectedMech.position, mechAtPos.position);
         if (dist <= selectedMech.stats.range) {
@@ -350,15 +432,15 @@ export default function App() {
 
             // Check win condition
             if (isDestroyed) {
-              const hasOpponentMechs = newMechs.some(m => m.ownerId !== user.uid && !m.isDestroyed);
+              const hasOpponentMechs = newMechs.some(m => m.ownerId !== activeUser.uid && !m.isDestroyed);
               if (!hasOpponentMechs) {
                 const gameRef = doc(db, 'games', gameState.id);
                 await updateDoc(gameRef, {
                   status: 'finished',
-                  winnerId: user.uid
+                  winnerId: activeUser.uid
                 });
                 newGameState.status = 'finished';
-                newGameState.winnerId = user.uid;
+                newGameState.winnerId = activeUser.uid;
               }
             }
 
@@ -371,7 +453,7 @@ export default function App() {
       } else {
         setSelectedMech(mechAtPos);
       }
-    } else if (selectedMech && !selectedMech.hasMoved && selectedMech.ownerId === user.uid) {
+    } else if (selectedMech && !selectedMech.hasMoved && selectedMech.ownerId === activeUser.uid) {
       // Move logic
       const dist = hexDistance(selectedMech.position, { q, r });
       if (dist <= selectedMech.stats.movement) {
@@ -405,8 +487,13 @@ export default function App() {
   };
 
   const handleEndTurn = async () => {
-    if (!gameState || !user) return;
-    if (gameState.activePlayerId !== user.uid) return;
+    if (!gameState || !activeUser) return;
+    if (gameState.activePlayerId !== activeUser.uid) return;
+    if (isLocalMode) {
+      setGameState(endLocalTurn(gameState));
+      setSelectedMech(undefined);
+      return;
+    }
     await endTurn(gameState);
     setSelectedMech(undefined);
   };
@@ -430,7 +517,7 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!activeUser) {
     return (
       <div className="w-full h-screen bg-black flex items-center justify-center font-mono text-emerald-500 relative overflow-hidden">
         <div className="absolute inset-0 opacity-20 bg-[url('https://picsum.photos/seed/mech/1920/1080')] bg-cover bg-center" />
@@ -446,6 +533,17 @@ export default function App() {
             <span>Initialize Neural Link</span>
             <span className="text-xs opacity-50">(Google Login)</span>
           </button>
+          <button
+            onClick={handleLocalSkirmish}
+            aria-label="Play Local Skirmish"
+            title="Play Local Skirmish"
+            className="w-full mt-3 bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-4 rounded-sm transition-all uppercase tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          >
+            Play Local Skirmish
+          </button>
+          <p className="mt-4 text-[10px] text-emerald-500/50 uppercase tracking-tight">
+            No account, API key, or setup required. Good for quick family testing.
+          </p>
           <div className="mt-6 text-[10px] opacity-30 uppercase tracking-tighter">
             Authorized Personnel Only // Sector 7 Command
           </div>
@@ -469,14 +567,14 @@ export default function App() {
             assets={assets}
             onHexClick={handleHexClick}
             selectedMech={selectedMech}
-            user={user}
+            user={activeUser}
           />
           
           <HUD 
             gameState={gameState} 
             selectedMech={selectedMech}
             onEndTurn={handleEndTurn}
-            isMyTurn={gameState.activePlayerId === user.uid}
+            isMyTurn={gameState.activePlayerId === activeUser.uid}
             assets={assets}
           />
           
@@ -497,10 +595,10 @@ export default function App() {
                 className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-[100] backdrop-blur-2xl"
               >
                 <h2 className="text-6xl font-bold text-emerald-500 tracking-tighter uppercase mb-4">
-                  {gameState.winnerId === user.uid ? 'Victory' : 'Defeat'}
+                  {gameState.winnerId === activeUser.uid ? 'Victory' : 'Defeat'}
                 </h2>
                 <p className="text-emerald-500/50 font-mono uppercase tracking-widest mb-12">
-                  Mission Parameters {gameState.winnerId === user.uid ? 'Achieved' : 'Failed'}
+                  Mission Parameters {gameState.winnerId === activeUser.uid ? 'Achieved' : 'Failed'}
                 </p>
                 <button 
                   onClick={() => window.location.reload()}

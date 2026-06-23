@@ -2,9 +2,10 @@ import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react
 import * as PIXI from 'pixi.js';
 import gsap from 'gsap';
 import { GameState, MechInstance } from '../game/types';
-import { hexToPixel, hexDistance } from '../game/hexUtils';
+import { hexToPixel, hexDistance, pixelToHex } from '../game/hexUtils';
 import { User } from 'firebase/auth';
 import { createProceduralMech, MechSpriteContainer } from '../game/MechRenderer';
+import { getTerrainProfile } from '../game/terrain';
 
 export interface PixiAppRef {
   playAttackAnimation: (attacker: {q: number, r: number}, target: {q: number, r: number}) => void;
@@ -202,6 +203,8 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     if (!containerRef.current) return;
 
     let isMounted = true;
+    let handleCanvasClick: ((e: MouseEvent) => void) | undefined;
+    let handleWheel: ((e: WheelEvent) => void) | undefined;
     const app = new PIXI.Application();
     
     app.init({
@@ -218,6 +221,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
       }
       
       containerRef.current?.appendChild(app.canvas);
+      app.canvas.style.cursor = 'pointer';
       appRef.current = app;
 
       // Load textures
@@ -318,9 +322,11 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
       
       let isDragging = false;
       let lastPos = { x: 0, y: 0 };
+      let dragDistance = 0;
 
       app.stage.on('pointerdown', (e) => {
         isDragging = true;
+        dragDistance = 0;
         lastPos = { x: e.global.x, y: e.global.y };
       });
 
@@ -331,13 +337,28 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         if (isDragging) {
           const dx = e.global.x - lastPos.x;
           const dy = e.global.y - lastPos.y;
+          dragDistance += Math.abs(dx) + Math.abs(dy);
           worldContainer.x += dx;
           worldContainer.y += dy;
           lastPos = { x: e.global.x, y: e.global.y };
         }
       });
 
-      const handleWheel = (e: WheelEvent) => {
+      handleCanvasClick = (e: MouseEvent) => {
+        if (dragDistance > 6) return;
+
+        const rect = app.canvas.getBoundingClientRect();
+        const local = worldContainer.toLocal(new PIXI.Point(e.clientX - rect.left, e.clientY - rect.top));
+        const hex = pixelToHex(local.x, local.y, HEX_SIZE);
+
+        if (hexDistance({ q: 0, r: 0 }, hex) <= 8) {
+          onHexClick(hex.q, hex.r);
+        }
+      };
+
+      app.canvas.addEventListener('click', handleCanvasClick);
+
+      handleWheel = (e: WheelEvent) => {
         e.preventDefault();
         const zoomFactor = 1.1;
         const scaleChange = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
@@ -372,6 +393,8 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
     return () => {
       isMounted = false;
+      if (handleCanvasClick) appRef.current?.canvas.removeEventListener('click', handleCanvasClick);
+      if (handleWheel) containerRef.current?.removeEventListener('wheel', handleWheel);
       if (appRef.current) {
         // Kill all GSAP tweens to prevent memory leaks and errors
         Object.values(mechSpritesRef.current).forEach((container: PIXI.Container) => {
@@ -433,17 +456,19 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         const dist = (Math.abs(q) + Math.abs(q + r) + Math.abs(r)) / 2;
         if (dist > 8) continue;
 
-        let fillColor = 0x001122; // Very dark blue base
-        let lineAlpha = 0.2; // Brighter holographic lines
-        let lineColor = 0x1188aa; // Cyan/blue holographic grid lines
-        let fillAlpha = 0;
+        const terrain = getTerrainProfile(q, r);
+        const elevationOffset = terrain.elevation * -4;
+        let fillColor = terrain.color;
+        let lineAlpha = 0.34;
+        let lineColor = terrain.edgeColor;
+        let fillAlpha = 0.72;
 
         // Highlight logic
         if (selectedMech && selectedMech.ownerId === user?.uid && !selectedMech.hasMoved) {
           const distToSelected = hexDistance(selectedMech.position, { q, r });
           if (distToSelected <= selectedMech.stats.movement) {
             fillColor = 0x1155aa; // Move range - holographic blue
-            fillAlpha = 0.2;
+            fillAlpha = 0.54;
             lineColor = 0x44aaff;
             lineAlpha = 0.6;
           }
@@ -455,7 +480,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
              const enemyHere = enemyPositions.has(`${q},${r}`);
              if (enemyHere) {
                fillColor = 0xff3333;
-               fillAlpha = 0.25;
+               fillAlpha = 0.62;
                lineColor = 0xff5555;
                lineAlpha = 0.6;
              }
@@ -465,34 +490,43 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         const points = [];
         for (let i = 0; i < 6; i++) {
           const angle = (Math.PI / 3) * i;
-          points.push(x + HEX_SIZE * Math.cos(angle), y + HEX_SIZE * Math.sin(angle));
+          points.push(x + HEX_SIZE * Math.cos(angle), y + elevationOffset + HEX_SIZE * Math.sin(angle));
         }
         
-        // Draw 3D thickness (bottom edge) only for highlighted hexes to reduce visual clutter
-        if (fillAlpha > 0) {
-          graphics.lineStyle(0);
-          graphics.beginFill(fillColor, fillAlpha * 0.5);
-          graphics.drawPolygon(points.map((p, i) => i % 2 === 1 ? p + 6 : p)); // Shift Y down
-          graphics.endFill();
-        }
+        // Draw terrain depth first so ridges and high ground feel grounded.
+        graphics.lineStyle(0);
+        graphics.beginFill(0x030608, 0.55);
+        graphics.drawPolygon(points.map((p, i) => i % 2 === 1 ? p + 8 + terrain.elevation * 2 : p));
+        graphics.endFill();
 
         graphics.lineStyle(1.5, lineColor, lineAlpha); // Thinner lines
-        if (fillAlpha > 0) {
-          graphics.beginFill(fillColor, fillAlpha);
-        } else {
-          graphics.beginFill(0x000000, 0.01); // Almost transparent for hit area
-        }
-        
+        graphics.beginFill(fillColor, fillAlpha);
         graphics.drawPolygon(points);
         graphics.endFill();
+
+        // Add cheap surface detail without external textures.
+        if (terrain.terrain === 'forest') {
+          graphics.lineStyle(1, 0x6bd889, 0.24);
+          graphics.moveTo(x - 18, y + elevationOffset - 8);
+          graphics.lineTo(x - 6, y + elevationOffset - 20);
+          graphics.moveTo(x + 6, y + elevationOffset + 10);
+          graphics.lineTo(x + 20, y + elevationOffset - 4);
+        } else if (terrain.terrain === 'water') {
+          graphics.lineStyle(1, 0x7bdcff, 0.32);
+          graphics.moveTo(x - 24, y + elevationOffset - 4);
+          graphics.quadraticCurveTo(x - 8, y + elevationOffset - 12, x + 8, y + elevationOffset - 4);
+          graphics.quadraticCurveTo(x + 18, y + elevationOffset + 2, x + 28, y + elevationOffset - 4);
+        } else if (terrain.terrain === 'mountain') {
+          graphics.lineStyle(1, 0xc1d1df, 0.22);
+          graphics.moveTo(x - 22, y + elevationOffset + 10);
+          graphics.lineTo(x, y + elevationOffset - 18);
+          graphics.lineTo(x + 22, y + elevationOffset + 10);
+        }
         
-        // Add interaction
+        // Add a transparent shape for future hover affordances.
         const hitArea = new PIXI.Polygon(points);
         const sprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
         sprite.hitArea = hitArea;
-        sprite.eventMode = 'static';
-        sprite.cursor = 'pointer';
-        sprite.on('pointerdown', () => onHexClick(q, r));
         container.addChild(sprite);
       }
     }
@@ -643,9 +677,6 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
         mechContainer.addChildAt(shadowContainer, 0); // Add shadows behind the mech parts
 
-        // Make the mech container interactive
-        mechContainer.eventMode = 'static';
-        mechContainer.cursor = 'pointer';
         // Explicit hit area for easier selection, scaled to the mech's height
         mechContainer.hitArea = new PIXI.Rectangle(-hitWidth/2, -targetHeight, hitWidth, targetHeight + 20);
         
@@ -686,13 +717,6 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
       // Update Z-index (by changing child order)
       container.setChildIndex(mechContainer, index);
-
-      // Update interaction listener
-      mechContainer.removeAllListeners('pointerdown');
-      mechContainer.on('pointerdown', (e) => {
-        e.stopPropagation(); // Prevent the hex below from firing
-        onHexClick(mech.position.q, mech.position.r);
-      });
 
       // Animate movement
       if (mechContainer.x !== x || mechContainer.y !== y) {
