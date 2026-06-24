@@ -9,6 +9,8 @@ export interface TerrainProfile extends HexCell {
   label: string;
 }
 
+export const TERRAIN_ELEVATION_STEP = 4;
+
 export function getTerrainProfile(q: number, r: number): TerrainProfile {
   const elevation = getElevation(q, r);
   const noise = seededNoise(q, r);
@@ -67,6 +69,10 @@ export function getTerrainProfile(q: number, r: number): TerrainProfile {
     defenseBonus: 0,
     label: 'Plain',
   };
+}
+
+export function getTerrainElevationOffset(q: number, r: number): number {
+  return getTerrainProfile(q, r).elevation * -TERRAIN_ELEVATION_STEP;
 }
 
 export function getReachableTerrainHexes(

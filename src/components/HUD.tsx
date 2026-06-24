@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { GameState, MechInstance } from '../game/types';
 import { getEffectiveMovement, isHeatLocked } from '../game/localSkirmish';
+import { TerrainProfile } from '../game/terrain';
 
 interface HUDProps {
   gameState: GameState;
@@ -9,9 +10,10 @@ interface HUDProps {
   onEndTurn: () => void;
   isMyTurn: boolean;
   assets: Record<string, string>;
+  inspectedTerrain?: TerrainProfile;
 }
 
-export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, isMyTurn, assets }) => {
+export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, isMyTurn, assets, inspectedTerrain }) => {
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
   const effectiveMovement = selectedMech ? getEffectiveMovement(selectedMech) : 0;
   const heatPercent = selectedMech ? selectedMech.stats.heat / selectedMech.stats.maxHeat : 0;
@@ -105,7 +107,7 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
           <motion.div 
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-black/90 border-t-2 border-emerald-500 p-6 w-full max-w-4xl flex gap-8 backdrop-blur-xl"
+            className="bg-black/90 border-t-2 border-emerald-500 p-6 w-full max-w-5xl flex gap-8 backdrop-blur-xl"
           >
             <div className="w-32 h-32 bg-emerald-900/20 border border-emerald-500/30 flex items-center justify-center overflow-hidden">
               {assets[`mech_${selectedMech.type}`] ? (
@@ -120,7 +122,7 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
               )}
             </div>
             
-            <div className="flex-1 grid grid-cols-2 gap-4">
+            <div className="flex-1 grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-mono text-emerald-500/70 uppercase">
                   <span>Armor</span>
@@ -188,6 +190,36 @@ export const HUD: React.FC<HUDProps> = ({ gameState, selectedMech, onEndTurn, is
                     {selectedMech.stats.heat}%
                   </div>
                 </div>
+              </div>
+              <div className="bg-emerald-900/10 border border-emerald-500/20 p-3 font-mono uppercase text-xs text-emerald-500">
+                <div className="opacity-50 mb-2">Terrain Intel</div>
+                {inspectedTerrain ? (
+                  <div className="space-y-2">
+                    <div className="text-lg text-emerald-300">{inspectedTerrain.label}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="opacity-50">Move Cost</div>
+                        <div>{inspectedTerrain.movementCost}</div>
+                      </div>
+                      <div>
+                        <div className="opacity-50">Defense</div>
+                        <div>+{inspectedTerrain.defenseBonus}</div>
+                      </div>
+                      <div>
+                        <div className="opacity-50">Elevation</div>
+                        <div>{inspectedTerrain.elevation}</div>
+                      </div>
+                      <div>
+                        <div className="opacity-50">Type</div>
+                        <div>{inspectedTerrain.terrain}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-emerald-500/50 leading-relaxed">
+                    Click a hex to scan movement cost, cover, and elevation.
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

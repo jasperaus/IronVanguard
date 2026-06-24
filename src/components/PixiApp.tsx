@@ -5,7 +5,7 @@ import { GameState, MechInstance } from '../game/types';
 import { hexToPixel, hexDistance, pixelToHex } from '../game/hexUtils';
 import { User } from 'firebase/auth';
 import { createProceduralMech, MechSpriteContainer } from '../game/MechRenderer';
-import { getReachableTerrainHexes, getTerrainProfile, toHexKey } from '../game/terrain';
+import { getReachableTerrainHexes, getTerrainElevationOffset, getTerrainProfile, toHexKey } from '../game/terrain';
 import { getEffectiveMovement } from '../game/localSkirmish';
 
 export interface PixiAppRef {
@@ -24,6 +24,11 @@ interface PixiAppProps {
 
 const HEX_SIZE = 45;
 const ISO_SQUASH = 0.707; // Factor to squash Y axis for isometric look (45 degrees)
+
+function getMechGroundPosition(q: number, r: number): { x: number; y: number } {
+  const pos = hexToPixel(q, r, HEX_SIZE);
+  return { x: pos.x, y: pos.y + getTerrainElevationOffset(q, r) };
+}
 
 // Custom shader to remove white background from generated mechs
 const whiteRemovalShader = `
@@ -88,8 +93,8 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     playAttackAnimation: (attackerPos, targetPos) => {
       if (!effectsLayerRef.current) return;
       
-      const start = hexToPixel(attackerPos.q, attackerPos.r, HEX_SIZE);
-      const end = hexToPixel(targetPos.q, targetPos.r, HEX_SIZE);
+      const start = getMechGroundPosition(attackerPos.q, attackerPos.r);
+      const end = getMechGroundPosition(targetPos.q, targetPos.r);
       const startY = start.y - 46;
       const endY = end.y - 46;
       
@@ -190,7 +195,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     playExplosionAnimation: (targetPos) => {
       if (!effectsLayerRef.current) return;
       
-      const pos = hexToPixel(targetPos.q, targetPos.r, HEX_SIZE);
+      const pos = getMechGroundPosition(targetPos.q, targetPos.r);
       
       // Create multiple explosion particles
       for (let i = 0; i < 15; i++) {
@@ -241,7 +246,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
     playDustAnimation: (targetPos) => {
       if (!effectsLayerRef.current) return;
       
-      const pos = hexToPixel(targetPos.q, targetPos.r, HEX_SIZE);
+      const pos = getMechGroundPosition(targetPos.q, targetPos.r);
       
       for (let i = 0; i < 5; i++) {
         const dust = new PIXI.Graphics();
@@ -535,7 +540,7 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
         if (dist > 8) continue;
 
         const terrain = getTerrainProfile(q, r);
-        const elevationOffset = terrain.elevation * -4;
+        const elevationOffset = getTerrainElevationOffset(q, r);
         let fillColor = terrain.color;
         let lineAlpha = 0.34;
         let lineColor = terrain.edgeColor;
@@ -641,13 +646,13 @@ export const PixiApp = forwardRef<PixiAppRef, PixiAppProps>(({ gameState, assets
 
     // Sort mechs by Y position for proper isometric depth sorting (painter's algorithm)
     const sortedMechs = [...state.mechs].filter(m => !m.isDestroyed).sort((a, b) => {
-      const posA = hexToPixel(a.position.q, a.position.r, HEX_SIZE);
-      const posB = hexToPixel(b.position.q, b.position.r, HEX_SIZE);
+      const posA = getMechGroundPosition(a.position.q, a.position.r);
+      const posB = getMechGroundPosition(b.position.q, b.position.r);
       return posA.y - posB.y;
     });
 
     sortedMechs.forEach((mech, index) => {
-      const { x, y } = hexToPixel(mech.position.q, mech.position.r, HEX_SIZE);
+      const { x, y } = getMechGroundPosition(mech.position.q, mech.position.r);
       let mechContainer = mechSpritesRef.current[mech.id];
 
       if (!mechContainer) {

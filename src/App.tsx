@@ -20,6 +20,7 @@ import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, User } from 'firebase/auth';
 import { onSnapshot, doc, collection, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { hexDistance } from './game/hexUtils';
+import { getTerrainProfile, TerrainProfile } from './game/terrain';
 
 const LOCAL_USER = {
   uid: LOCAL_PLAYER_ID,
@@ -48,6 +49,7 @@ export default function App() {
   const [currentAssetLoading, setCurrentAssetLoading] = useState('');
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [isLocalMode, setIsLocalMode] = useState(false);
+  const [inspectedTerrain, setInspectedTerrain] = useState<TerrainProfile | undefined>(undefined);
   const activeUser = isLocalMode ? LOCAL_USER : user;
   
   const pixiAppRef = useRef<PixiAppRef>(null);
@@ -121,6 +123,7 @@ export default function App() {
     if (!isLocalMode) return;
     setGameState(createLocalSkirmishGame());
     setSelectedMech(undefined);
+    setInspectedTerrain(undefined);
     setDialogueIndex(0);
     setIsDialogueVisible(true);
   }, [isLocalMode]);
@@ -348,6 +351,7 @@ export default function App() {
   const handleHexClick = async (q: number, r: number) => {
     if (!gameState || !activeUser || gameState.status === 'finished') return;
     if (gameState.activePlayerId !== activeUser.uid) return; // Not your turn
+    setInspectedTerrain(getTerrainProfile(q, r));
     
     const mechAtPos = gameState.mechs.find(m => m.position.q === q && m.position.r === r && !m.isDestroyed);
 
@@ -492,10 +496,12 @@ export default function App() {
     if (isLocalMode) {
       setGameState(endLocalTurn(gameState));
       setSelectedMech(undefined);
+      setInspectedTerrain(undefined);
       return;
     }
     await endTurn(gameState);
     setSelectedMech(undefined);
+    setInspectedTerrain(undefined);
   };
 
   const handleNextDialogue = () => {
@@ -576,6 +582,7 @@ export default function App() {
             onEndTurn={handleEndTurn}
             isMyTurn={gameState.activePlayerId === activeUser.uid}
             assets={assets}
+            inspectedTerrain={inspectedTerrain}
           />
           
           <Dialogue 

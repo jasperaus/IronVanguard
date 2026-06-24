@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
-import { getReachableTerrainHexes, getTerrainProfile, toHexKey } from './terrain';
+import { TERRAIN_ELEVATION_STEP, getReachableTerrainHexes, getTerrainElevationOffset, getTerrainProfile, toHexKey } from './terrain';
 
 describe('terrain profiles', () => {
   test('are deterministic for the same hex', () => {
@@ -24,5 +24,11 @@ describe('terrain profiles', () => {
     assert.ok(reachable.has(toHexKey({ q: -5, r: 1 })));
     assert.ok(reachable.has(toHexKey({ q: -4, r: 1 })));
     assert.ok(!reachable.has(toHexKey({ q: -3, r: 2 })));
+  });
+
+  test('derives visual elevation offsets from terrain elevation', () => {
+    const terrain = getTerrainProfile(0, 0);
+
+    assert.strictEqual(getTerrainElevationOffset(0, 0), terrain.elevation * -TERRAIN_ELEVATION_STEP);
   });
 });
